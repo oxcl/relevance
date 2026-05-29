@@ -1,0 +1,13 @@
+name: Test
+on: workflow_dispatch
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print versions
+        run: |
+          echo "Hello from GitHub Actions"
+          python3 --version
+          java --version 2>&1 || true
+          uname -a
