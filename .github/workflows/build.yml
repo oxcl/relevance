@@ -21,7 +21,7 @@ jobs:
         run: |
           python3 -m venv /opt/venv
           /opt/venv/bin/pip install .
-          echo "/opt/venv/bin" >> $GITHUB_PATH
+          echo "/opt/venv/bin" >> "$GITHUB_PATH"
 
       - name: Restore cached repo
         uses: actions/cache/restore@v5
@@ -47,21 +47,9 @@ jobs:
       - name: Generate F-Droid index
         working-directory: fdroid
         run: |
-          # Strip v3 signing blocks that androguard can't parse
           for apk in repo/*.apk; do
             if [ -f "$apk" ]; then
-              python3 -c "
-import zipfile, os, tempfile, shutil
-apk = '$apk'
-tmp = apk + '.tmp'
-with zipfile.ZipFile(apk, 'r') as zin:
-    with zipfile.ZipFile(tmp, 'w') as zout:
-        for item in zin.infolist():
-            data = zin.read(item.filename)
-            if not item.filename.startswith('META-INF/'):
-                zout.writestr(item, data)
-shutil.move(tmp, apk)
-"
+              python3 -c "import zipfile, shutil; apk='$apk'; tmp=apk+'.tmp'; zin=zipfile.ZipFile(apk,'r'); zout=zipfile.ZipFile(tmp,'w'); [zout.writestr(i,zin.read(i.filename)) for i in zin.infolist() if not i.filename.startswith('META-INF/')]; zin.close(); zout.close(); shutil.move(tmp,apk)"
             fi
           done
           fdroid update --create-metadata
