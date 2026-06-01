@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
@@ -7,16 +7,15 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl wget unzip zip \
     openjdk-17-jdk \
     python3 python3-pip python3-venv \
-    android-sdk-build-tools \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
 
-RUN pip3 install --no-cache-dir fdroidserver justapk
+RUN pip3 install --no-cache-dir --break-system-packages fdroidserver justapk
 
 RUN mkdir -p /opt/tools
 
-ARG APKTOOL_VERSION=2.10.0
+ARG APKTOOL_VERSION=3.0.2
 RUN curl -fsSL "https://github.com/iBotPeaches/Apktool/releases/download/v${APKTOOL_VERSION}/apktool_${APKTOOL_VERSION}.jar" \
     -o /opt/tools/apktool.jar
 
@@ -24,8 +23,8 @@ ARG UBER_APK_SIGNER_VERSION=1.3.0
 RUN curl -fsSL "https://github.com/patrickfav/uber-apk-signer/releases/download/v${UBER_APK_SIGNER_VERSION}/uber-apk-signer-${UBER_APK_SIGNER_VERSION}.jar" \
     -o /opt/tools/uber-apk-signer.jar
 
-ARG APK_EDITOR_VERSION=1.22.0
-RUN curl -fsSL "https://github.com/REAndroid/APKEditor/releases/download/V${APK_EDITOR_VERSION}/APKEditor.jar" \
+ARG APK_EDITOR_VERSION=1.4.9
+RUN curl -fsSL "https://github.com/REAndroid/APKEditor/releases/download/V${APK_EDITOR_VERSION}/APKEditor-${APK_EDITOR_VERSION}.jar" \
     -o /opt/tools/APKEditor.jar
 
 ARG REVANCED_CLI_VERSION=5.0.0
