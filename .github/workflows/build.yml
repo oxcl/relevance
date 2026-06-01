@@ -49,7 +49,11 @@ jobs:
         run: |
           for apk in repo/*.apk; do
             if [ -f "$apk" ]; then
-              python3 -c "import zipfile, shutil; apk='$apk'; tmp=apk+'.tmp'; zin=zipfile.ZipFile(apk,'r'); zout=zipfile.ZipFile(tmp,'w'); [zout.writestr(i,zin.read(i.filename)) for i in zin.infolist() if not i.filename.startswith('META-INF/')]; zin.close(); zout.close(); shutil.move(tmp,apk)"
+              tmp="${apk}.tmp"
+              python3 -c "import zipfile, shutil; apk='$apk'; tmp='$tmp'; zin=zipfile.ZipFile(apk,'r'); zout=zipfile.ZipFile(tmp,'w'); [zout.writestr(i,zin.read(i.filename)) for i in zin.infolist() if not i.filename.startswith('META-INF/')]; zin.close(); zout.close(); shutil.move(tmp,apk)"
+              zipalign -f 4 "$apk" "${apk}.aligned"
+              mv "${apk}.aligned" "$apk"
+              apksigner sign --ks keystore.p12 --ks-pass pass:"$KEYSTORE_PASSWORD" --ks-key-alias repokey --key-pass pass:"$KEYSTORE_PASSWORD" "$apk"
             fi
           done
           fdroid update --create-metadata
