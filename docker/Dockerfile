@@ -7,9 +7,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git curl wget unzip zip \
     openjdk-17-jdk \
     python3 python3-pip python3-venv \
+    android-sdk-build-tools \
     && rm -rf /var/lib/apt/lists/*
 
 ENV PATH="${JAVA_HOME}/bin:${PATH}"
+ENV ANDROID_HOME=/usr/lib/android-sdk
+ENV PATH="${ANDROID_HOME}/build-tools/34.0.0:${PATH}"
 
 RUN pip3 install --no-cache-dir --break-system-packages fdroidserver justapk
 
