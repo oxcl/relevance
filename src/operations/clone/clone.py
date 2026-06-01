@@ -34,9 +34,7 @@ class CloneOperation(OperationBase):
 
         output_apk = self._recompile(decompiled, work_dir, apk_path.stem)
 
-        signed_apk = self._sign(output_apk)
-
-        return signed_apk
+        return output_apk
 
     def _decompile(self, apk_path: Path, work_dir: Path) -> Path:
         apktool = get_jar("apktool")
