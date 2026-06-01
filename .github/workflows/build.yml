@@ -46,7 +46,25 @@ jobs:
 
       - name: Generate F-Droid index
         working-directory: fdroid
-        run: fdroid update --create-metadata
+        run: |
+          # Strip v3 signing blocks that androguard can't parse
+          for apk in repo/*.apk; do
+            if [ -f "$apk" ]; then
+              python3 -c "
+import zipfile, os, tempfile, shutil
+apk = '$apk'
+tmp = apk + '.tmp'
+with zipfile.ZipFile(apk, 'r') as zin:
+    with zipfile.ZipFile(tmp, 'w') as zout:
+        for item in zin.infolist():
+            data = zin.read(item.filename)
+            if not item.filename.startswith('META-INF/'):
+                zout.writestr(item, data)
+shutil.move(tmp, apk)
+"
+            fi
+          done
+          fdroid update --create-metadata
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
 
