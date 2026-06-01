@@ -32,7 +32,9 @@ jobs:
           restore-keys: fdroid-repo-
 
       - name: Decode keystore
-        run: echo "$KEYSTORE_BASE64" | base64 -d > fdroid/keystore.p12
+        run: |
+          mkdir -p fdroid
+          echo "$KEYSTORE_BASE64" | base64 -d > fdroid/keystore.p12
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
 
