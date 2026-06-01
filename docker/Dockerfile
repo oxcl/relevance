@@ -27,8 +27,8 @@ ARG APK_EDITOR_VERSION=1.4.9
 RUN curl -fsSL "https://github.com/REAndroid/APKEditor/releases/download/V${APK_EDITOR_VERSION}/APKEditor-${APK_EDITOR_VERSION}.jar" \
     -o /opt/tools/APKEditor.jar
 
-ARG REVANCED_CLI_VERSION=5.0.0
-RUN curl -fsSL "https://github.com/ReVanced/revanced-cli/releases/download/v${REVANCED_CLI_VERSION}/revanced-cli-${REVANCED_CLI_VERSION}.jar" \
+ARG REVANCED_CLI_VERSION=6.0.0
+RUN curl -fsSL "https://github.com/ReVanced/revanced-cli/releases/download/v${REVANCED_CLI_VERSION}/revanced-cli-${REVANCED_CLI_VERSION}-all.jar" \
     -o /opt/tools/revanced-cli.jar
 
 RUN curl -fsSL "https://github.com/EFForg/apkeep/releases/latest/download/apkeep-x86_64-unknown-linux-gnu" \
