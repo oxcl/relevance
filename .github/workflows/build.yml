@@ -31,10 +31,32 @@ jobs:
           key: fdroid-repo-${{ hashFiles('apps.yml') }}
           restore-keys: fdroid-repo-
 
+      - name: Debug environment
+        run: |
+          echo "Checking secrets..."
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "KEYSTORE_BASE64 is set (length: ${#KEYSTORE_BASE64})"
+          else
+            echo "KEYSTORE_BASE64 is NOT set"
+          fi
+          if [ -n "$KEYSTORE_PASSWORD" ]; then
+            echo "KEYSTORE_PASSWORD is set"
+          else
+            echo "KEYSTORE_PASSWORD is NOT set"
+          fi
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+
       - name: Decode keystore
         run: |
           mkdir -p fdroid
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "ERROR: KEYSTORE_BASE64 is empty or not set"
+            exit 1
+          fi
           echo "$KEYSTORE_BASE64" | base64 -d > fdroid/keystore.p12
+          ls -la fdroid/keystore.p12
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
 
