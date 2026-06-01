@@ -1,0 +1,30 @@
+settings:
+  repo_name: "Relevance"
+  repo_description: "Custom F-Droid repository"
+  output_dir: "fdroid/repo"
+  publish_original: true
+  keep_versions: 2
+
+patch_sources:
+  revanced:
+    - name: "revanced"
+      type: github_release
+      repo: "ReVanced/revanced-patches"
+      asset_pattern: "*.rvp"
+
+apps:
+  - name: "F-Droid"
+    package_id: "org.fdroid.fdroid"
+    source:
+      type: direct
+      url: "https://f-droid.org/F-Droid.apk"
+
+  - name: "F-Droid Clone"
+    package_id: "org.fdroid.fdroid"
+    source:
+      type: direct
+      url: "https://f-droid.org/F-Droid.apk"
+    operations:
+      - type: clone
+        new_package: "org.fdroid.fdroid.clone"
+        new_name: "F-Droid Clone"

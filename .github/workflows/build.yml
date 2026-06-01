@@ -1,0 +1,59 @@
+name: Build & Deploy
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */12 * * *"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/oxcl/relevance/build-env:latest
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install relevance
+        run: pip install .
+
+      - name: Restore cached repo
+        uses: actions/cache/restore@v5
+        id: cache
+        with:
+          path: fdroid/repo/
+          key: fdroid-repo-${{ hashFiles('apps.yml') }}
+          restore-keys: fdroid-repo-
+
+      - name: Decode keystore
+        run: echo "$KEYSTORE_BASE64" | base64 -d > fdroid/keystore.p12
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+
+      - name: Build
+        run: relevance run --config apps.yml
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+
+      - name: Generate F-Droid index
+        working-directory: fdroid
+        run: fdroid update --create-metadata
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+
+      - name: Save repo cache
+        if: always()
+        uses: actions/cache/save@v5
+        with:
+          path: fdroid/repo/
+          key: fdroid-repo-${{ github.run_id }}
+
+      - name: Deploy to Pages
+        if: success()
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./fdroid/repo
