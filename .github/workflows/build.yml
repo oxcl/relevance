@@ -56,16 +56,14 @@ jobs:
               apksigner sign --ks keystore.p12 --ks-pass pass:"$KEYSTORE_PASSWORD" --ks-key-alias repokey --key-pass pass:"$KEYSTORE_PASSWORD" "$apk"
             fi
           done
-          /usr/bin/python3 ../scripts/fdroid_update.py
+          rm -f repo/.nojekyll
+          fdroid update --create-metadata
+          touch repo/.nojekyll
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
 
-      - name: Save repo cache
-        if: always()
-        uses: actions/cache/save@v5
-        with:
-          path: fdroid/repo/
-          key: fdroid-repo-${{ github.run_id }}
+      - name: Prepare Pages artifact
+        run: touch fdroid/repo/.nojekyll
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
