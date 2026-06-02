@@ -33,8 +33,8 @@ fdroid_dir = os.path.join(os.getcwd(), 'fdroid')
 if os.path.exists(fdroid_dir):
     os.chdir(fdroid_dir)
 
-# Set up argv for fdroidserver (without 'update' subcommand since we call update.main directly)
-sys.argv = ['fdroid', '--create-metadata']
+# Set up argv for fdroidserver
+sys.argv = ['fdroid update', '--create-metadata']
 
 # Import and run fdroidserver update directly
 import fdroidserver.update
