@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Monkey-patch androguard NoOverwriteDict bug, then run fdroid update."""
-import subprocess
+import os
 import sys
 
+# Monkey-patch androguard BEFORE importing fdroidserver
 try:
     import androguard.core.apk as apk_mod
 
@@ -27,5 +28,13 @@ try:
 except Exception as e:
     print(f"Warning: Could not patch androguard: {e}", file=sys.stderr)
 
-r = subprocess.run(['fdroid', 'update', '--create-metadata'])
-sys.exit(r.returncode)
+# Change to fdroid directory
+fdroid_dir = os.path.join(os.getcwd(), 'fdroid')
+if os.path.exists(fdroid_dir):
+    os.chdir(fdroid_dir)
+
+# Import and run fdroidserver update directly (same process, monkey-patched)
+from fdroidserver.update import main
+
+sys.argv = ['fdroid', 'update', '--create-metadata']
+main()
