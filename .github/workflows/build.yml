@@ -57,7 +57,7 @@ jobs:
             fi
           done
           rm -f repo/.nojekyll
-          fdroid update --create-metadata
+          /usr/bin/python3 ../scripts/fdroid_update.py
           touch repo/.nojekyll
         env:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
