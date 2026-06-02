@@ -28,13 +28,14 @@ try:
 except Exception as e:
     print(f"Warning: Could not patch androguard: {e}", file=sys.stderr)
 
-# Change to fdroid directory
+# Change to fdroid directory if it exists
 fdroid_dir = os.path.join(os.getcwd(), 'fdroid')
 if os.path.exists(fdroid_dir):
     os.chdir(fdroid_dir)
 
-# Import and run fdroidserver update directly (same process, monkey-patched)
-from fdroidserver.update import main
+# Set up argv for fdroidserver (without 'update' subcommand since we call update.main directly)
+sys.argv = ['fdroid', '--create-metadata']
 
-sys.argv = ['fdroid', 'update', '--create-metadata']
-main()
+# Import and run fdroidserver update directly
+import fdroidserver.update
+fdroidserver.update.main()
