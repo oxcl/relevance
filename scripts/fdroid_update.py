@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """Fix androguard NoOverwriteDict bug, then run fdroid update."""
 import os
-import subprocess
+import re
 import sys
 
-# Fix androguard source code directly
 try:
     import androguard.core.apk as apk_mod
     apk_file = apk_mod.__file__
@@ -12,21 +11,28 @@ try:
     with open(apk_file, 'r') as f:
         content = f.read()
     
-    # Replace self._v2_blocks.append(...) with a try/except that handles dict
-    if 'self._v2_blocks.append(' in content:
-        # Replace the problematic line with one that handles both list and dict
-        content = content.replace(
-            'self._v2_blocks.append(APKV2SignatureBlock(key, is_duplicate_id, value))',
-            '''try:
-                    self._v2_blocks.append(APKV2SignatureBlock(key, is_duplicate_id, value))
-                except AttributeError:
-                    self._v2_blocks[key] = APKV2SignatureBlock(key, is_duplicate_id, value)'''
-        )
+    # Find and replace the problematic line preserving indentation
+    old_line = 'self._v2_blocks.append(APKV2SignatureBlock(key, is_duplicate_id, value))'
+    if old_line in content:
+        # Find the indentation of the line
+        lines = content.split('\n')
+        new_lines = []
+        for line in lines:
+            if old_line in line:
+                indent = len(line) - len(line.lstrip())
+                sp = ' ' * indent
+                new_lines.append(f'{sp}if hasattr(self._v2_blocks, "append"):')
+                new_lines.append(f'{sp}    self._v2_blocks.append(APKV2SignatureBlock(key, is_duplicate_id, value))')
+                new_lines.append(f'{sp}else:')
+                new_lines.append(f'{sp}    self._v2_blocks[key] = APKV2SignatureBlock(key, is_duplicate_id, value)')
+            else:
+                new_lines.append(line)
+        
         with open(apk_file, 'w') as f:
-            f.write(content)
+            f.write('\n'.join(new_lines))
         print(f"Patched androguard: {apk_file}", file=sys.stderr)
 except Exception as e:
-    print(f"Warning: Could not patch androguard source: {e}", file=sys.stderr)
+    print(f"Warning: Could not patch androguard: {e}", file=sys.stderr)
 
 fdroid_dir = os.path.join(os.getcwd(), 'fdroid')
 if os.path.exists(fdroid_dir):
