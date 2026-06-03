@@ -6,19 +6,18 @@ import sys
 try:
     import androguard.core.apk as apk_mod
 
-    # Patch __init__ to find and fix NoOverwriteDict on the instance
+    class AppendableDict(dict):
+        """Dict that also supports .append() like a list."""
+        def append(self, item):
+            key = getattr(item, 'id', len(self))
+            self[key] = item
+
     _orig_init = apk_mod.APK.__init__
 
     def _patched_init(self, *args, **kwargs):
         _orig_init(self, *args, **kwargs)
-        blocks = self._v2_blocks
-        # Add append method to the class if missing
-        cls = type(blocks)
-        if not hasattr(cls, 'append'):
-            def _append(self_dict, item):
-                key = item[0] if isinstance(item, tuple) else getattr(item, 'id', len(self_dict))
-                self_dict[key] = item
-            cls.append = _append
+        if isinstance(self._v2_blocks, dict) and not hasattr(self._v2_blocks, 'append'):
+            self._v2_blocks = AppendableDict(self._v2_blocks)
 
     apk_mod.APK.__init__ = _patched_init
 except Exception as e:
