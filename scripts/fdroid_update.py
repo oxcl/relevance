@@ -1,35 +1,32 @@
 #!/usr/bin/env python3
-"""Monkey-patch androguard _v2_blocks bug, then run fdroid update."""
+"""Fix androguard NoOverwriteDict bug, then run fdroid update."""
 import os
+import subprocess
 import sys
 
+# Fix androguard source code directly
 try:
     import androguard.core.apk as apk_mod
-
-    # Create a patched APK.__init__ that adds append to NoOverwriteDict
-    _orig_init = apk_mod.APK.__init__
-    _patched_classes = set()
-
-    def _patched_init(self, *args, **kwargs):
-        _orig_init(self, *args, **kwargs)
-        # Get the actual class of _v2_blocks and add append to it
-        blocks = self._v2_blocks
-        cls = type(blocks)
-        cls_id = id(cls)
-        if cls_id not in _patched_classes:
-            _patched_classes.add(cls_id)
-            # Add append as a bound method to the class
-            def _append(instance, item):
-                key = getattr(item, 'id', len(instance))
-                instance[key] = item
-            try:
-                cls.append = _append
-            except TypeError:
-                pass  # immutable type, can't patch
-
-    apk_mod.APK.__init__ = _patched_init
+    apk_file = apk_mod.__file__
+    
+    with open(apk_file, 'r') as f:
+        content = f.read()
+    
+    # Replace self._v2_blocks.append(...) with a try/except that handles dict
+    if 'self._v2_blocks.append(' in content:
+        # Replace the problematic line with one that handles both list and dict
+        content = content.replace(
+            'self._v2_blocks.append(APKV2SignatureBlock(key, is_duplicate_id, value))',
+            '''try:
+                    self._v2_blocks.append(APKV2SignatureBlock(key, is_duplicate_id, value))
+                except AttributeError:
+                    self._v2_blocks[key] = APKV2SignatureBlock(key, is_duplicate_id, value)'''
+        )
+        with open(apk_file, 'w') as f:
+            f.write(content)
+        print(f"Patched androguard: {apk_file}", file=sys.stderr)
 except Exception as e:
-    print(f"Warning: Could not patch androguard: {e}", file=sys.stderr)
+    print(f"Warning: Could not patch androguard source: {e}", file=sys.stderr)
 
 fdroid_dir = os.path.join(os.getcwd(), 'fdroid')
 if os.path.exists(fdroid_dir):
