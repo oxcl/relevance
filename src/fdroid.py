@@ -37,9 +37,11 @@ def generate_fdroid_config(settings: Settings, keystore_path: Path) -> Path:
         shutil.copy2(repo_logo, fdroid_dir / "icon.png")
 
     password = os.environ.get("KEYSTORE_PASSWORD", "")
+    repo_url = settings.repo_url.rstrip("/")
+    fdroid_repo_url = repo_url if repo_url.endswith("/repo") else f"{repo_url}/repo"
 
     config = {
-        "repo_url": settings.repo_url.rstrip("/"),
+        "repo_url": fdroid_repo_url,
         "repo_name": settings.repo_name,
         "repo_description": settings.repo_description,
         "repo_icon": "icon.png",
@@ -120,23 +122,40 @@ def run_fdroid_update(settings: Settings) -> None:
     if nojekyll.exists():
         nojekyll.unlink()
 
-    script_path = Path("scripts/fdroid_update.py").resolve()
-    if script_path.exists():
-        proc = subprocess.run(
-            [sys.executable, str(script_path)],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if proc.returncode != 0:
-            raise RuntimeError(
-                f"fdroid update failed ({proc.returncode}):\n{proc.stdout}\n{proc.stderr}"
+    pipeline_files = ["state.json", "patch-browser.html"]
+    moved_files: list[tuple[Path, Path]] = []
+    for name in pipeline_files:
+        source = repo_dir / name
+        if source.exists():
+            backup = repo_dir.parent / f".{name}.pipeline"
+            shutil.move(str(source), str(backup))
+            moved_files.append((source, backup))
+
+    try:
+        script_path = Path("scripts/fdroid_update.py").resolve()
+        if script_path.exists():
+            env = os.environ.copy()
+            env["RELEVANCE_REPO_URL"] = settings.repo_url.rstrip("/")
+            proc = subprocess.run(
+                [sys.executable, str(script_path)],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=env,
             )
-    else:
-        fdroid_dir = repo_dir.parent
-        result = run_cmd(["fdroid", "update", "--create-metadata"], cwd=fdroid_dir, check=False)
-        if result.returncode != 0:
-            raise RuntimeError(f"fdroid update failed: {result.stderr}")
+            if proc.returncode != 0:
+                raise RuntimeError(
+                    f"fdroid update failed ({proc.returncode}):\n{proc.stdout}\n{proc.stderr}"
+                )
+        else:
+            fdroid_dir = repo_dir.parent
+            result = run_cmd(["fdroid", "update", "--create-metadata"], cwd=fdroid_dir, check=False)
+            if result.returncode != 0:
+                raise RuntimeError(f"fdroid update failed: {result.stderr}")
+    finally:
+        for source, backup in moved_files:
+            if backup.exists():
+                shutil.move(str(backup), str(source))
 
     nojekyll.touch()
 
