@@ -1,8 +1,10 @@
+import json
 import logging
 import os
 import shutil
 import sys
 from pathlib import Path
+from typing import Any
 
 import click
 from rich.console import Console
@@ -11,12 +13,12 @@ from src import __version__
 from src.cache import (
     compute_config_hash,
     compute_source_hash,
-    is_up_to_date,
     load_state,
     save_state,
     update_state,
 )
-from src.config import AppConfigFile, Operation, load_config
+from src.config import AppConfig, AppConfigFile, load_config
+from src.emulator import verify_apks_on_emulator
 from src.fdroid import (
     add_nojekyll,
     decode_keystore,
@@ -24,194 +26,248 @@ from src.fdroid import (
     get_repo_fingerprint,
     run_fdroid_update,
     version_retention,
+    write_variant_metadata,
 )
-from src.merge.merger import is_split_apk, merge_split_apk, sign_apk
-from src.operations.clone.clone import CloneOperation
-from src.operations.patch.revanced import (
-    RevancedPatchOperation,
-    download_patches,
-    get_recommended_version,
+from src.icons import generate_morphe_custom_icon_dir, generate_original_youtube_icon
+from src.merge.merger import is_split_apk, merge_split_apk
+from src.morphe import (
+    ensure_morphe_patches,
+    patch_variant,
+    resolve_best_version,
 )
 from src.sources.auto import download_apk
-from src.web import generate_landing_page, generate_patch_browser
+from src.web import generate_landing_page, generate_patch_browser_from_morphe_json
 
 console = Console()
 log = logging.getLogger(__name__)
 
 
-def _resolve_version_for_revanved(
-    app_config: dict,
-    source: dict,
-    patches_paths: list,
-    name: str,
-) -> str | None:
-    version = source.get("version", "auto")
-    if version != "auto":
-        return version
+def check_app_update_status(
+    app: AppConfig,
+    config: AppConfigFile,
+    force: bool = False,
+) -> dict[str, Any]:
+    output_dir = Path(config.settings.output_dir)
+    state = load_state(output_dir)
 
-    package_id = app_config["package_id"]
-    recommended = get_recommended_version(patches_paths, package_id)
-    if recommended:
-        console.print(f"[cyan]ℹ[/cyan] {name}: recommended version {recommended}")
-    return recommended
+    _mpp_path, patches_list_path, patches_version = ensure_morphe_patches(app.patch_source)
+    version_info = resolve_best_version(
+        package_id=app.package_id,
+        patches_list_path=patches_list_path,
+        include_experimental=app.include_experimental,
+    )
+    rec_version = str(version_info["recommended_version"])
+    target_version = app.version if app.version not in ("auto", "latest") else rec_version
+
+    variants = app.effective_variants()
+    variant_statuses: list[dict[str, Any]] = []
+    any_needs_update = False
+
+    for variant in variants:
+        cfg_hash = compute_config_hash(
+            {
+                "app": app.model_dump(mode="json", exclude={"variants"}),
+                "variant": variant.model_dump(mode="json"),
+                "patches_version": patches_version,
+            }
+        )
+        prev = state.apps.get(variant.package_name)
+        existing_apks = list(output_dir.glob(f"{variant.package_name}_*.apk")) + list(
+            output_dir.glob(f"{variant.package_name}.apk")
+        )
+        up_to_date = (
+            not force
+            and prev is not None
+            and prev.version == target_version
+            and prev.config_hash == cfg_hash
+            and len(existing_apks) > 0
+        )
+        if not up_to_date:
+            any_needs_update = True
+
+        variant_statuses.append(
+            {
+                "id": variant.id,
+                "name": variant.name,
+                "package_name": variant.package_name,
+                "previously_patched_version": prev.version if prev else None,
+                "target_version": target_version,
+                "needs_update": not up_to_date,
+            }
+        )
+
+    return {
+        "name": app.name,
+        "package_id": app.package_id,
+        "patch_source": app.patch_source,
+        "patches_version": patches_version,
+        "target_version": target_version,
+        "morphe_patch_count": version_info["patch_count"],
+        "needs_update": any_needs_update,
+        "agent_instructions": app.agent_instructions.strip(),
+        "variants": variant_statuses,
+    }
 
 
 def process_app(
-    app_config: dict,
+    app: AppConfig,
     config: AppConfigFile,
     force: bool,
     dry_run: bool,
-    patches_paths: list,
-) -> bool:
-    name = app_config["name"]
-    package_id = app_config["package_id"]
-    source = app_config.get("source", {})
-    source_type = source.get("type", "direct")
-    operations = app_config.get("operations", [])
-
-    if isinstance(source_type, list):
-        source_type = source_type[0]
-
+    keystore_path: Path | None,
+    keystore_password: str,
+) -> tuple[bool, list[Path], list[dict[str, str]], Path | None]:
     output_dir = Path(config.settings.output_dir)
-    cache_dir = Path(".cache") / package_id
+    cache_dir = Path(".cache") / app.package_id
+    cache_dir.mkdir(parents=True, exist_ok=True)
     state = load_state(output_dir)
 
-    config_hash = compute_config_hash(app_config)
+    mpp_path, patches_list_path, patches_version = ensure_morphe_patches(app.patch_source)
+    version_info = resolve_best_version(
+        package_id=app.package_id,
+        patches_list_path=patches_list_path,
+        include_experimental=app.include_experimental,
+    )
+    rec_version = str(version_info["recommended_version"])
+    target_version = app.version if app.version not in ("auto", "latest") else rec_version
+    variants = app.effective_variants()
 
-    has_revanved = any(op.get("framework") == "revanced" for op in operations)
+    console.print(
+        f"[cyan]ℹ[/cyan] {app.name} ({app.package_id}): "
+        f"Morphe v{patches_version} recommended version [bold]{target_version}[/bold] "
+        f"({version_info['patch_count']} default patches)"
+    )
 
     if dry_run:
-        ops_str = ", ".join(op.get("type", "?") for op in operations) or "none"
-        console.print(f"[cyan]DRY RUN[/cyan] {name}: {source_type} → {output_dir} [{ops_str}]")
-        return True
+        for v in variants:
+            console.print(
+                f"  [cyan]DRY RUN[/cyan] Variant '{v.name}' ({v.package_name}) @ v{target_version}"
+            )
+        return True, [], [], patches_list_path
 
-    cache_dir.mkdir(parents=True, exist_ok=True)
+    variants_to_build = []
+    published_apks: list[Path] = []
+    variants_summary: list[dict[str, str]] = []
 
-    target_package = package_id
-    for op in operations:
-        if op.get("type") == "clone" and op.get("new_package"):
-            target_package = op["new_package"]
-            break
-
-    existing_apks = list(output_dir.glob(f"{target_package}_*.apk"))
-    if not existing_apks:
-        existing_apks = list(output_dir.glob(f"{target_package}.apk"))
-    if existing_apks and not force:
-        existing_apk = existing_apks[0]
-        source_hash = compute_source_hash(existing_apk)
-        if is_up_to_date(state, target_package, source_hash, config_hash):
-            console.print(f"[green]✓[/green] {name}: up to date, skipping")
-            return True
-
-    if has_revanved and source_type == "apkpure":
-        recommended = _resolve_version_for_revanved(app_config, source, patches_paths, name)
-        if recommended:
-            source["version"] = recommended
-
-    source_path = _download_source(source_type, package_id, source, cache_dir, name)
-    if source_path is None:
-        return False
-
-    if is_split_apk(source_path):
-        console.print(f"[yellow]⟳[/yellow] {name}: split APK detected, merging...")
-        try:
-            source_path = merge_split_apk(source_path, cache_dir)
-            source_path = sign_apk(source_path)
-        except Exception as e:
-            console.print(f"[red]✗[/red] {name}: merge failed — {e}")
-            return False
-
-    current_apk = source_path
-
-    for op in operations:
-        op_type = op.get("type")
-        op_config = Operation(**op)
-
-        if op_type == "patch":
-            framework = op.get("framework", "revanced")
-            if framework == "revanced":
-                console.print(f"[blue]⟳[/blue] {name}: applying ReVanced patches...")
-                try:
-                    patch_op = RevancedPatchOperation(patches_paths)
-                    work_dir = cache_dir / "patch_work"
-                    current_apk = patch_op.apply(current_apk, op_config, work_dir)
-                    console.print(f"[green]✓[/green] {name}: patches applied")
-                except Exception as e:
-                    console.print(f"[red]✗[/red] {name}: patch failed — {e}")
-                    return False
-            else:
-                console.print(
-                    f"[yellow]⚠[/yellow] {name}: framework '{framework}' not implemented yet"
-                )
-        elif op_type == "clone":
-            console.print(f"[blue]⟳[/blue] {name}: cloning...")
-            try:
-                clone_op = CloneOperation()
-                work_dir = cache_dir / "clone_work"
-                current_apk = clone_op.apply(current_apk, op_config, work_dir)
-                console.print(f"[green]✓[/green] {name}: cloned → {op_config.new_package}")
-            except Exception as e:
-                console.print(f"[red]✗[/red] {name}: clone failed — {e}")
-                return False
+    for v in variants:
+        cfg_hash = compute_config_hash(
+            {
+                "app": app.model_dump(mode="json", exclude={"variants"}),
+                "variant": v.model_dump(mode="json"),
+                "patches_version": patches_version,
+            }
+        )
+        prev = state.apps.get(v.package_name)
+        existing_apks = sorted(
+            list(output_dir.glob(f"{v.package_name}_*.apk"))
+            + list(output_dir.glob(f"{v.package_name}.apk")),
+            key=lambda p: p.stat().st_mtime,
+            reverse=True,
+        )
+        if (
+            not force
+            and prev is not None
+            and prev.version == target_version
+            and prev.config_hash == cfg_hash
+            and existing_apks
+        ):
+            console.print(
+                f"[green]✓[/green] {v.name} ({v.package_name}): "
+                f"already at v{target_version}, skipping"
+            )
+            icon_512 = cache_dir / "variants" / v.id / "icon_512.png"
+            if not icon_512.exists():
+                if v.icon.type == "youtube_flag":
+                    icon_dir = cache_dir / "variants" / v.id / "custom_icon"
+                    generate_morphe_custom_icon_dir(
+                        output_dir=icon_dir,
+                        country=v.icon.country,
+                        stripes=v.icon.stripes,
+                    )
+                    icon_512 = icon_dir / "icon_512.png"
+                else:
+                    generate_original_youtube_icon(icon_512)
+            write_variant_metadata(
+                output_dir=output_dir,
+                variant=v,
+                base_app_name=app.name,
+                version=target_version,
+                patches_version=patches_version,
+                icon_512_path=icon_512,
+            )
+            published_apks.append(existing_apks[0])
+            variants_summary.append(
+                {
+                    "name": v.name,
+                    "package_name": v.package_name,
+                    "version": target_version,
+                }
+            )
         else:
-            console.print(f"[yellow]⚠[/yellow] {name}: unknown operation '{op_type}', skipping")
+            variants_to_build.append((v, cfg_hash))
+
+    if not variants_to_build:
+        return True, published_apks, variants_summary, patches_list_path
+
+    console.print(
+        f"[blue]⟳[/blue] Fetching {app.package_id}@{target_version} via {app.source}..."
+    )
+    raw_source = download_apk(
+        source_type=app.source,
+        package_id=app.package_id,
+        version=target_version,
+        dest=cache_dir / "downloads",
+    )
+    console.print(f"[green]✓[/green] Downloaded {raw_source.name}")
+
+    base_apk = raw_source
+    if is_split_apk(raw_source):
+        console.print(f"[yellow]⟳[/yellow] Merging split APK bundle {raw_source.name}...")
+        base_apk = merge_split_apk(raw_source, cache_dir / "merged")
+        console.print(f"[green]✓[/green] Merged into {base_apk.name}")
 
     output_dir.mkdir(parents=True, exist_ok=True)
+    version_slug = target_version.replace(".", "")
 
-    if operations:
-        dest_name = f"{target_package}_1.apk"
-    else:
-        dest_name = current_apk.name
+    for v, cfg_hash in variants_to_build:
+        console.print(f"[blue]⟳[/blue] Patching variant '{v.name}' ({v.package_name})...")
+        patched_apk, icon_512, _report = patch_variant(
+            input_apk=base_apk,
+            app=app,
+            variant=v,
+            mpp_path=mpp_path,
+            work_dir=cache_dir / "variants",
+            keystore_path=keystore_path,
+            keystore_password=keystore_password,
+        )
 
-    dest_path = output_dir / dest_name
-    shutil.copy2(current_apk, dest_path)
+        dest_apk = output_dir / f"{v.package_name}_{version_slug}.apk"
+        shutil.copy2(patched_apk, dest_apk)
 
-    source_hash = compute_source_hash(dest_path)
-    update_state(state, target_package, source_hash, config_hash, "latest")
-    save_state(output_dir, state)
+        write_variant_metadata(
+            output_dir=output_dir,
+            variant=v,
+            base_app_name=app.name,
+            version=target_version,
+            patches_version=patches_version,
+            icon_512_path=icon_512,
+        )
 
-    console.print(f"[green]✓[/green] {name}: published → {dest_path.name}")
-    return True
+        apk_hash = compute_source_hash(dest_apk)
+        update_state(state, v.package_name, apk_hash, cfg_hash, target_version)
+        save_state(output_dir, state)
 
+        published_apks.append(dest_apk)
+        variants_summary.append(
+            {
+                "name": v.name,
+                "package_name": v.package_name,
+                "version": target_version,
+            }
+        )
+        console.print(f"[green]✓[/green] Published {v.name} → {dest_apk.name}")
 
-def _download_source(
-    source_type: str,
-    package_id: str,
-    source: dict,
-    cache_dir: Path,
-    name: str,
-) -> Path | None:
-    if source_type == "direct":
-        url = source.get("url")
-        if not url:
-            console.print(f"[red]✗[/red] {name}: direct source requires 'url'")
-            return None
-        try:
-            return download_apk(
-                source_type="direct",
-                package_id=package_id,
-                version="latest",
-                dest=cache_dir,
-                config={"url": url},
-            )
-        except Exception as e:
-            console.print(f"[red]✗[/red] {name}: download failed — {e}")
-            return None
-    elif source_type == "apkpure":
-        version = source.get("version", "latest")
-        try:
-            return download_apk(
-                source_type="apkpure",
-                package_id=package_id,
-                version=version,
-                dest=cache_dir,
-            )
-        except Exception as e:
-            console.print(f"[red]✗[/red] {name}: APKPure download failed — {e}")
-            return None
-    else:
-        console.print(f"[red]✗[/red] {name}: source type '{source_type}' not implemented yet")
-        return None
+    return True, published_apks, variants_summary, patches_list_path
 
 
 def validate_env(require_keystore: bool = True) -> None:
@@ -235,43 +291,53 @@ def hello() -> None:
     console.print("[green]relevance is working[/green]")
 
 
+@cli.command("check-updates")
+@click.option("--config", "config_path", default="apps.yaml", help="Path to apps.yaml")
+@click.option("--force", is_flag=True, help="Treat all apps as needing update")
+def check_updates_cmd(config_path: str, force: bool) -> None:
+    config = load_config(config_path)
+    statuses = [check_app_update_status(app, config, force=force) for app in config.apps]
+    click.echo(json.dumps({"apps": statuses}, indent=2))
+
+
+@cli.command("generate-icon")
+@click.option("--country", required=True, help="Country code (AM, RU, DE, ...)")
+@click.option("--output", "output_dir", required=True, help="Output directory for custom icon")
+def generate_icon_cmd(country: str, output_dir: str) -> None:
+    out = generate_morphe_custom_icon_dir(Path(output_dir), country=country)
+    console.print(f"[green]✓[/green] Generated Morphe custom icon for {country} at {out}")
+
+
+@cli.command("test-emulator")
+@click.option("--apk", "apk_paths", multiple=True, help="APK file(s) to install and test")
+@click.option("--repo-dir", default="fdroid/repo", help="Repo directory containing APKs")
+def test_emulator_cmd(apk_paths: tuple[str, ...], repo_dir: str) -> None:
+    paths = [Path(p) for p in apk_paths] if apk_paths else sorted(Path(repo_dir).glob("*.apk"))
+    if not paths:
+        raise click.ClickException("No APK files found to test on emulator")
+    report = verify_apks_on_emulator(paths)
+    click.echo(json.dumps(report, indent=2))
+
+
 @cli.command("run")
-@click.option("--config", "config_path", required=True, help="Path to apps.yml")
+@click.option("--config", "config_path", default="apps.yaml", help="Path to apps.yaml")
 @click.option("--dry-run", is_flag=True, help="Show plan without executing")
 @click.option("--force", is_flag=True, help="Ignore idempotency, re-process everything")
 @click.option("--app", "app_name", default=None, help="Process only this app")
 @click.option("--skip-fdroid", is_flag=True, help="Skip F-Droid index generation")
-def run(
+@click.option("--test-emulator", is_flag=True, help="Verify built APKs on Android Emulator")
+def run_cmd(
     config_path: str,
     dry_run: bool,
     force: bool,
     app_name: str | None,
     skip_fdroid: bool,
+    test_emulator: bool,
 ) -> None:
-    try:
-        config = load_config(config_path)
-    except Exception as e:
-        console.print(f"[red]Config error:[/red] {e}")
-        sys.exit(1)
+    config = load_config(config_path)
 
     if not dry_run:
         validate_env(require_keystore=not skip_fdroid)
-
-    has_revanved = False
-    for app in config.apps:
-        for op in app.operations:
-            if op.framework == "revanced":
-                has_revanved = True
-                break
-
-    patches_paths = []
-    if has_revanved and config.patch_sources.revanced:
-        console.print("[cyan]⟳[/cyan] Downloading ReVanced patches...")
-        try:
-            patches_paths = download_patches(config.patch_sources.revanced)
-            console.print(f"[green]✓[/green] Downloaded {len(patches_paths)} patch bundle(s)")
-        except Exception as e:
-            console.print(f"[red]✗[/red] Failed to download patches: {e}")
 
     apps = config.apps
     if app_name:
@@ -280,74 +346,74 @@ def run(
             console.print(f"[red]App not found:[/red] {app_name}")
             sys.exit(1)
 
-    console.print(f"[bold]Relevance[/bold] v{__version__}")
-    console.print(f"Repo: {config.settings.repo_name}")
-    console.print(f"Apps: {len(apps)}")
-    if dry_run:
-        console.print("[cyan]DRY RUN — no changes will be made[/cyan]")
-    console.print()
-
     output_dir = Path(config.settings.output_dir)
+    keystore_path: Path | None = None
+    keystore_password = os.environ.get("KEYSTORE_PASSWORD", "")
 
     if not dry_run and not skip_fdroid:
         keystore_path = decode_keystore(output_dir)
         generate_fdroid_config(config.settings, keystore_path)
-        console.print("[green]✓[/green] Keystore decoded, F-Droid config generated")
-        console.print()
 
-    success = 0
+    all_apks: list[Path] = []
+    all_variants_summary: list[dict[str, str]] = []
+    last_patches_list: Path | None = None
     failed = 0
 
     for app in apps:
-        app_dict = app.model_dump(mode="json")
         try:
-            if process_app(app_dict, config, force, dry_run, patches_paths):
-                success += 1
+            ok, apks, summary, patches_list = process_app(
+                app=app,
+                config=config,
+                force=force,
+                dry_run=dry_run,
+                keystore_path=keystore_path,
+                keystore_password=keystore_password,
+            )
+            if ok:
+                all_apks.extend(apks)
+                all_variants_summary.extend(summary)
+                if patches_list:
+                    last_patches_list = patches_list
             else:
                 failed += 1
         except Exception as e:
             console.print(f"[red]✗[/red] {app.name}: {e}")
             failed += 1
 
-    console.print()
+    if failed > 0:
+        sys.exit(1)
+
+    if not dry_run and test_emulator and all_apks:
+        console.print("[cyan]⟳[/cyan] Testing APKs on Android Emulator...")
+        emu_report = verify_apks_on_emulator(all_apks)
+        console.print(
+            f"[green]✓[/green] Emulator verified {emu_report['side_by_side_count']} "
+            f"coexisting packages: {', '.join(emu_report['coexisting_packages'])}"
+        )
 
     if not dry_run and not skip_fdroid:
-        removed = version_retention(output_dir, config.settings.keep_versions)
-        if removed > 0:
-            console.print(f"[yellow]♻[/yellow] Removed {removed} old APK versions")
-
+        version_retention(output_dir, config.settings.keep_versions)
         add_nojekyll(output_dir)
         run_fdroid_update(config.settings)
 
-        console.print("[cyan]⟳[/cyan] Generating web UI...")
-        if patches_paths:
-            generate_patch_browser(patches_paths, output_dir)
+        fingerprint = (
+            get_repo_fingerprint(keystore_path)
+            if keystore_path and keystore_path.exists()
+            else "unknown"
+        )
+        if last_patches_list and last_patches_list.exists():
+            generate_patch_browser_from_morphe_json(last_patches_list, output_dir)
         generate_landing_page(
             repo_name=config.settings.repo_name,
             repo_description=config.settings.repo_description,
-            repo_url="https://oxcl.github.io/relevance/fdroid.repo",
+            repo_url=config.settings.repo_url,
+            fingerprint=fingerprint,
             github_url="https://github.com/oxcl/relevance",
+            variants_info=all_variants_summary,
             output_dir=output_dir,
         )
-        console.print("[green]✓[/green] Web UI generated")
-
-        keystore_path = output_dir.parent / "keystore.p12"
-        if keystore_path.exists():
-            fingerprint = get_repo_fingerprint(keystore_path)
-        else:
-            fingerprint = "unknown"
-
-        console.print()
-        console.print("[bold]Repo URL:[/bold] https://oxcl.github.io/relevance/fdroid.repo")
+        console.print(f"[bold]Repo URL:[/bold] {config.settings.repo_url}")
         console.print(f"[bold]Fingerprint:[/bold] {fingerprint}")
-        console.print(
-            f"[bold]Add:[/bold] https://oxcl.github.io/relevance/fdroid.repo?fingerprint={fingerprint}"
-        )
-
-    console.print()
-    console.print(f"[green]{success} succeeded[/green], [red]{failed} failed[/red]")
-    if failed > 0:
-        sys.exit(1)
 
 
 if __name__ == "__main__":

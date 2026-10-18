@@ -12,7 +12,7 @@ class DirectSource(Source):
         package_id: str,
         version: str,
         dest: Path,
-        config: dict | None = None,
+        config: dict[str, str] | None = None,
     ) -> Path:
         if config is None or "url" not in config:
             raise ValueError("Direct source requires a 'url' in config")

@@ -1,30 +1,47 @@
 settings:
   repo_name: "Relevance"
-  repo_description: "Custom F-Droid repository"
+  repo_description: "Automated Morphe-patched Android apps F-Droid repository"
+  repo_url: "https://oxcl.github.io/relevance"
   output_dir: "fdroid/repo"
-  publish_original: true
   keep_versions: 2
-
-patch_sources:
-  revanced:
-    - name: "revanced"
-      type: github_release
-      repo: "ReVanced/revanced-patches"
-      asset_pattern: "*.rvp"
+  default_source: "apk-pure"
+  default_patch_source: "MorpheApp/morphe-patches"
 
 apps:
-  - name: "F-Droid"
-    package_id: "org.fdroid.fdroid"
-    source:
-      type: direct
-      url: "https://f-droid.org/F-Droid.apk"
-
-  - name: "F-Droid Clone"
-    package_id: "org.fdroid.fdroid"
-    source:
-      type: direct
-      url: "https://f-droid.org/F-Droid.apk"
-    operations:
-      - type: clone
-        new_package: "org.fdroid.fdroid.clone"
-        new_name: "F-Droid Clone"
+  - name: "YouTube"
+    package_id: "com.google.android.youtube"
+    source: "apk-pure"
+    patch_source: "MorpheApp/morphe-patches"
+    patches: "default"
+    include_experimental: false
+    agent_instructions: |
+      Use the default selected and recommended patches by Morphe without any modifications.
+      Create 4 different YouTube versions that can be installed alongside each other:
+      1. Normal YouTube as usual (name: "YouTube", package: "app.morphe.android.youtube", original YouTube logo).
+      2. "YouTube AM" (package: "app.morphe.android.youtube.am") — same as the main app, named "YouTube AM", with the YouTube logo using the flag of Armenia (AM) instead of the red background.
+      3. "YouTube RU" (package: "app.morphe.android.youtube.ru") — same as the main app, named "YouTube RU", with the YouTube logo using the flag of Russia (RU) instead of the red background.
+      4. "YouTube DE" (package: "app.morphe.android.youtube.de") — same as the main app, named "YouTube DE", with the YouTube logo using the flag of Germany (DE) instead of the red background.
+    variants:
+      - id: "youtube"
+        name: "YouTube"
+        package_name: "app.morphe.android.youtube"
+        icon:
+          type: "original"
+      - id: "youtube-am"
+        name: "YouTube AM"
+        package_name: "app.morphe.android.youtube.am"
+        icon:
+          type: "youtube_flag"
+          country: "AM"
+      - id: "youtube-ru"
+        name: "YouTube RU"
+        package_name: "app.morphe.android.youtube.ru"
+        icon:
+          type: "youtube_flag"
+          country: "RU"
+      - id: "youtube-de"
+        name: "YouTube DE"
+        package_name: "app.morphe.android.youtube.de"
+        icon:
+          type: "youtube_flag"
+          country: "DE"

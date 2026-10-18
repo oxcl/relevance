@@ -10,6 +10,7 @@ log = logging.getLogger(__name__)
 SOURCES: dict[str, type[Source]] = {
     "direct": DirectSource,
     "apkpure": ApkPureSource,
+    "apk-pure": ApkPureSource,
 }
 
 
@@ -24,7 +25,7 @@ def download_apk(
     package_id: str,
     version: str,
     dest: Path,
-    config: dict | None = None,
+    config: dict[str, str] | None = None,
 ) -> Path:
     source = get_source(source_type)
     return source.download(package_id, version, dest, config)

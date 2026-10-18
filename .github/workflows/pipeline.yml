@@ -1,0 +1,244 @@
+name: Morphe OpenCode Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Force rebuild all apps and variants"
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+  issues: write
+
+concurrency:
+  group: "morphe-pipeline"
+  cancel-in-progress: false
+
+jobs:
+  build-and-test:
+    name: OpenCode Patch, Emulator Test & F-Droid Build
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Enable KVM for Android Emulator
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
+      - name: Install Android Emulator & Build Tools + Start Emulator in Background
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
+          BUILD_TOOLS_DIR=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
+          echo "$BUILD_TOOLS_DIR" >> "$GITHUB_PATH"
+
+          CMDLINE_BIN="$ANDROID_HOME/cmdline-tools/latest/bin"
+          if [ ! -d "$CMDLINE_BIN" ]; then
+            CMDLINE_BIN=$(find "$ANDROID_HOME/cmdline-tools" -mindepth 2 -maxdepth 2 -type d -name bin | head -n1)
+          fi
+          yes | "$CMDLINE_BIN/sdkmanager" --licenses > /dev/null || true
+          "$CMDLINE_BIN/sdkmanager" --install "platform-tools" "emulator" "platforms;android-30" "system-images;android-30;google_apis;x86_64"
+          echo "no" | "$CMDLINE_BIN/avdmanager" create avd --force --name "morphe_test_avd" --package "system-images;android-30;google_apis;x86_64" --abi "x86_64" --device "pixel_4"
+
+          nohup "$ANDROID_HOME/emulator/emulator" \
+            -avd morphe_test_avd \
+            -no-window \
+            -gpu swiftshader_indirect \
+            -no-snapshot \
+            -noaudio \
+            -no-boot-anim \
+            -memory 4096 \
+            -accel on > /tmp/emulator.log 2>&1 &
+          echo "Started Android Emulator in background (PID $!)"
+
+      - name: Install Pipeline Dependencies & Tools (apkeep, fdroidserver, relevance)
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install fdroidserver justapk -e .
+          mkdir -p "$HOME/.local/bin" .tools
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          curl -fsSL "https://github.com/EFForg/apkeep/releases/latest/download/apkeep-x86_64-unknown-linux-gnu" -o "$HOME/.local/bin/apkeep"
+          chmod +x "$HOME/.local/bin/apkeep"
+
+      - name: Restore Cached F-Droid Repository State
+        uses: actions/cache/restore@v4
+        with:
+          path: fdroid/repo/
+          key: fdroid-repo-${{ hashFiles('apps.yaml') }}-${{ github.run_id }}
+          restore-keys: |
+            fdroid-repo-${{ hashFiles('apps.yaml') }}-
+            fdroid-repo-
+
+      - name: Install and Configure OpenCode CLI (DeepSeek V4.1 Flash)
+        env:
+          OPENCODE_API_KEY: ${{ secrets.OPENCODE_API_KEY }}
+        run: |
+          curl -fsSL https://opencode.ai/install | bash
+          echo "$HOME/.opencode/bin" >> "$GITHUB_PATH"
+          mkdir -p "$HOME/.local/share/opencode"
+          python3 -c '
+          import json, os
+          from pathlib import Path
+          p = Path.home() / ".local/share/opencode/auth.json"
+          p.write_text(json.dumps({"opencode-go": {"type": "api", "key": os.environ["OPENCODE_API_KEY"]}}, indent=2))
+          p.chmod(0o600)
+          '
+
+      - name: Run OpenCode Agent (DeepSeek V4.1 Flash) with Timeout
+        timeout-minutes: 35
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          FORCE_REBUILD: ${{ inputs.force || 'false' }}
+        run: |
+          export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
+          FORCE_FLAG=""
+          if [ "$FORCE_REBUILD" = "true" ]; then
+            FORCE_FLAG="--force"
+          fi
+
+          PROMPT="You are running inside the scheduled Relevance GitHub Actions pipeline.
+          1. Read apps.yaml and AGENTS.md.
+          2. Run: python3 -m src.main check-updates --config apps.yaml $FORCE_FLAG
+          3. Check the agent_instructions for each app in apps.yaml. Ensure variants in apps.yaml match the requested 4 YouTube apps (YouTube, YouTube AM, YouTube RU, YouTube DE with Armenia, Russia, and Germany flag backgrounds).
+          4. If any app or variant needs an update (needs_update is true) or if fdroid/repo/index-v1.jar does not exist yet or FORCE_REBUILD is true, run:
+             python3 -m src.main run --config apps.yaml $FORCE_FLAG --test-emulator
+          5. If all apps are already up-to-date in fdroid/repo/state.json and the APKs exist in fdroid/repo/, still verify the existing APKs on the Android Emulator by running:
+             python3 -m src.main test-emulator --repo-dir fdroid/repo
+             and ensure fdroid/repo/index-v1.jar exists.
+          6. Summarize the patched versions, emulator test results, and F-Droid repository status."
+
+          timeout --preserve-status 30m opencode run --model opencode-go/deepseek-v4.1-flash "$PROMPT"
+
+      - name: Verify Built F-Droid Repo & Emulator Coexistence
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ ! -f fdroid/repo/index-v1.jar ] || [ ! -f fdroid/repo/index-v1.json ]; then
+            echo "F-Droid index not yet generated by agent; running fallback pipeline verification..."
+            python3 -m src.main run --config apps.yaml --test-emulator
+          fi
+          python3 -c '
+          import json
+          from pathlib import Path
+          idx = json.loads(Path("fdroid/repo/index-v1.json").read_text())
+          pkgs = {a["packageName"]: a.get("localized", {}).get("en-US", {}).get("name") or a.get("name") for a in idx.get("apps", [])}
+          print("Indexed F-Droid packages:", pkgs)
+          expected = {
+              "app.morphe.android.youtube",
+              "app.morphe.android.youtube.am",
+              "app.morphe.android.youtube.ru",
+              "app.morphe.android.youtube.de",
+          }
+          missing = expected - set(pkgs.keys())
+          assert not missing, f"Missing expected packages in F-Droid index: {missing}"
+          '
+          INSTALLED_PKGS=$(adb shell pm list packages)
+          for pkg in app.morphe.android.youtube app.morphe.android.youtube.am app.morphe.android.youtube.ru app.morphe.android.youtube.de; do
+            if ! echo "$INSTALLED_PKGS" | grep -q "package:${pkg}$"; then
+              echo "Verifying APKs on Android Emulator..."
+              python3 -m src.main test-emulator --repo-dir fdroid/repo
+              break
+            fi
+          done
+          echo "All 4 YouTube variants verified in F-Droid index and on Android Emulator!"
+
+      - name: Save F-Droid Repository Cache
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: fdroid/repo/
+          key: fdroid-repo-${{ hashFiles('apps.yaml') }}-${{ github.run_id }}
+
+      - name: Upload GitHub Pages Artifact
+        if: success()
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./fdroid/repo
+
+      - name: Open GitHub Issue on Failure (Deduplicated)
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_TITLE="[Pipeline Failure] Automated Morphe F-Droid Pipeline Failed"
+          EXISTING_ISSUE=$(gh issue list --repo "${{ github.repository }}" --state open --search "\"$ISSUE_TITLE\" in:title" --json number --jq '.[0].number // empty')
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ -n "$EXISTING_ISSUE" ]; then
+            echo "Open issue #$EXISTING_ISSUE already exists. Adding comment with latest run link."
+            gh issue comment "$EXISTING_ISSUE" --repo "${{ github.repository }}" --body "Pipeline failed again in run [#${{ github.run_id }}]($RUN_URL) on $(date -u '+%Y-%m-%d %H:%M:%S UTC')."
+          else
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "$ISSUE_TITLE" \
+              --body "The scheduled/dispatched OpenCode + Morphe F-Droid pipeline failed.
+
+          - **Workflow Run:** [View Run Logs]($RUN_URL)
+          - **Commit:** \`${{ github.sha }}\`
+          - **Triggered by:** \`${{ github.event_name }}\`
+
+          This issue was automatically opened by the workflow failure handler."
+          fi
+
+  deploy-pages:
+    name: Deploy F-Droid Repo to GitHub Pages
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+        timeout-minutes: 15
+      - name: Open GitHub Issue if Pages Deploy Fails
+        if: failure()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ISSUE_TITLE="[Pipeline Failure] Automated Morphe F-Droid Pipeline Failed"
+          EXISTING_ISSUE=$(gh issue list --repo "${{ github.repository }}" --state open --search "\"$ISSUE_TITLE\" in:title" --json number --jq '.[0].number // empty')
+          RUN_URL="${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          if [ -z "$EXISTING_ISSUE" ]; then
+            gh issue create \
+              --repo "${{ github.repository }}" \
+              --title "$ISSUE_TITLE" \
+              --body "GitHub Pages deployment failed in [Run #${{ github.run_id }}]($RUN_URL)."
+          fi

@@ -9,7 +9,6 @@ class Source(ABC):
         package_id: str,
         version: str,
         dest: Path,
-        config: dict | None = None,
+        config: dict[str, str] | None = None,
     ) -> Path:
-        """Download APK and return the path to the downloaded file."""
         ...

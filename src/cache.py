@@ -2,6 +2,7 @@ import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -25,7 +26,7 @@ def compute_source_hash(file_path: Path) -> str:
     return h.hexdigest()
 
 
-def compute_config_hash(app_config: dict) -> str:
+def compute_config_hash(app_config: dict[str, Any]) -> str:
     serialized = json.dumps(app_config, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(serialized.encode()).hexdigest()
 
@@ -34,7 +35,7 @@ def load_state(repo_dir: Path) -> State:
     state_path = repo_dir / "state.json"
     if not state_path.exists():
         return State()
-    with open(state_path) as f:
+    with open(state_path, encoding="utf-8") as f:
         data = json.load(f)
     return State(**data)
 
@@ -44,7 +45,7 @@ def save_state(repo_dir: Path, state: State) -> None:
     state_path = repo_dir / "state.json"
     data = state.model_dump(mode="json")
     data_str = json.dumps(data, indent=2, sort_keys=False)
-    with open(state_path, "w") as f:
+    with open(state_path, "w", encoding="utf-8") as f:
         f.write(data_str + "\n")
 
 
