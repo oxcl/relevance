@@ -14,26 +14,37 @@ log = logging.getLogger(__name__)
 CACHE_DIR = Path(".cache/microg")
 
 
-def _adb_cmd(*args: str, timeout: int = 120) -> subprocess.CompletedProcess[str]:
+def _adb_path() -> str:
     adb = shutil.which("adb")
-    if not adb:
-        android_home = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or ""
-        candidate = Path(android_home) / "platform-tools" / "adb"
-        if candidate.exists():
-            adb = str(candidate)
-        else:
-            raise FileNotFoundError("adb not found in PATH or ANDROID_HOME/platform-tools")
+    if adb:
+        return adb
+    android_home = os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or ""
+    candidate = Path(android_home) / "platform-tools" / "adb"
+    if candidate.exists():
+        return str(candidate)
+    raise FileNotFoundError("adb not found in PATH or ANDROID_HOME/platform-tools")
+
+
+def _adb_cmd(*args: str, timeout: int = 120) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [adb, *args], capture_output=True, text=True, timeout=timeout, check=False
+        [_adb_path(), *args], capture_output=True, text=True, timeout=timeout, check=False
     )
 
 
-def wait_for_emulator(timeout_seconds: int = 300) -> None:
-    _adb_cmd("wait-for-device", timeout=timeout_seconds)
+def wait_for_emulator(timeout_seconds: int = 480) -> None:
+    _adb_cmd("start-server", timeout=60)
     deadline = time.time() + timeout_seconds
+    last_state = ""
     while time.time() < deadline:
-        res = _adb_cmd("shell", "getprop", "sys.boot_completed", timeout=15)
-        if res.stdout.strip() == "1":
+        try:
+            res = _adb_cmd("shell", "getprop", "sys.boot_completed", timeout=30)
+            last_state = res.stdout.strip()
+        except subprocess.TimeoutExpired:
+            last_state = "adb-timeout"
+            time.sleep(5)
+            continue
+
+        if last_state == "1":
             _adb_cmd(
                 "shell", "settings", "put", "global", "window_animation_scale", "0", timeout=15
             )
@@ -45,8 +56,13 @@ def wait_for_emulator(timeout_seconds: int = 300) -> None:
             )
             _adb_cmd("shell", "input", "keyevent", "82", timeout=15)
             return
-        time.sleep(3)
-    raise TimeoutError("Timed out waiting for Android Emulator to finish booting")
+        time.sleep(5)
+
+    devices = _adb_cmd("devices", timeout=30)
+    raise TimeoutError(
+        "Timed out waiting for Android Emulator to finish booting "
+        f"(last sys.boot_completed='{last_state}', adb devices:\n{devices.stdout})"
+    )
 
 
 def ensure_microg_installed() -> Path | None:

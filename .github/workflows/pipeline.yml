@@ -59,7 +59,7 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Install Android Emulator & Build Tools + Start Emulator in Background
+      - name: Install Android Emulator & Build Tools
         run: |
           export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
           echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
@@ -76,16 +76,59 @@ jobs:
           "$CMDLINE_BIN/sdkmanager" --install "platform-tools" "emulator" "platforms;android-30" "system-images;android-30;google_apis;x86_64"
           echo "no" | "$CMDLINE_BIN/avdmanager" create avd --force --name "morphe_test_avd" --package "system-images;android-30;google_apis;x86_64" --abi "x86_64" --device "pixel_4"
 
-          nohup "$ANDROID_HOME/emulator/emulator" \
-            -avd morphe_test_avd \
-            -no-window \
-            -gpu swiftshader_indirect \
-            -no-snapshot \
-            -noaudio \
-            -no-boot-anim \
-            -memory 4096 \
-            -accel on > /tmp/emulator.log 2>&1 &
-          echo "Started Android Emulator in background (PID $!)"
+      - name: Start Android Emulator (boot wait + retry)
+        run: |
+          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          ADB="$ANDROID_HOME/platform-tools/adb"
+          EMU="$ANDROID_HOME/emulator/emulator"
+          "$ADB" start-server
+
+          start_emulator() {
+            nohup "$EMU" \
+              -avd morphe_test_avd \
+              -no-window \
+              -gpu swiftshader_indirect \
+              -no-snapshot \
+              -noaudio \
+              -no-boot-anim \
+              -no-metrics \
+              -memory 4096 \
+              -accel on > /tmp/emulator.log 2>&1 &
+            EMU_PID=$!
+          }
+
+          wait_boot() {
+            for _ in $(seq 1 72); do
+              STATE=$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
+              if [ "$STATE" = "1" ]; then return 0; fi
+              if ! kill -0 "$EMU_PID" 2>/dev/null; then return 1; fi
+              sleep 5
+            done
+            return 1
+          }
+
+          start_emulator
+          if ! wait_boot; then
+            echo "::warning::First emulator boot attempt failed. Emulator log:"
+            tail -n 100 /tmp/emulator.log || true
+            kill "$EMU_PID" 2>/dev/null || true
+            pkill -f "qemu-system-x86_64" 2>/dev/null || true
+            sleep 5
+            "$ADB" kill-server || true
+            "$ADB" start-server || true
+            start_emulator
+            if ! wait_boot; then
+              echo "::error::Second emulator boot attempt failed. Emulator log:"
+              tail -n 200 /tmp/emulator.log || true
+              exit 1
+            fi
+          fi
+
+          "$ADB" shell settings put global window_animation_scale 0 || true
+          "$ADB" shell settings put global transition_animation_scale 0 || true
+          "$ADB" shell settings put global animator_duration_scale 0 || true
+          "$ADB" shell input keyevent 82 || true
+          echo "Android Emulator booted and ready: $( "$ADB" devices | tail -n +2 )"
 
       - name: Install Pipeline Dependencies & Tools (apkeep, fdroidserver, relevance)
         run: |
@@ -196,7 +239,7 @@ jobs:
           assert not missing, f"Missing expected packages in F-Droid index: {missing}"
           '
 
-          INSTALLED_PKGS=$(adb shell pm list packages)
+          INSTALLED_PKGS=$(adb shell pm list packages 2>/dev/null || true)
           VARIANT_PKGS="app.morphe.android.youtube app.morphe.android.youtube.am app.morphe.android.youtube.ru app.morphe.android.youtube.de"
           NEEDS_EMULATOR_TEST=0
           for pkg in $VARIANT_PKGS; do
