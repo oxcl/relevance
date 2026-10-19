@@ -120,7 +120,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics -memory 4096
           script: |
-            set -euo pipefail
+            set -eu
             export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
 
             if [ "${FORCE_REBUILD:-false}" = "true" ]; then
