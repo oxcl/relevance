@@ -36,7 +36,7 @@ jobs:
   build-and-test:
     name: OpenCode Patch, Emulator Test & F-Droid Build
     runs-on: ubuntu-latest
-    timeout-minutes: 55
+    timeout-minutes: 70
 
     steps:
       - name: Checkout repository
@@ -59,76 +59,14 @@ jobs:
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
 
-      - name: Install Android Emulator & Build Tools
+      - name: Configure Android SDK PATH
         run: |
-          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
-          echo "$ANDROID_HOME/platform-tools" >> "$GITHUB_PATH"
-          echo "$ANDROID_HOME/emulator" >> "$GITHUB_PATH"
-          BUILD_TOOLS_DIR=$(find "$ANDROID_HOME/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
+          ANDROID_SDK="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
+          echo "ANDROID_HOME=$ANDROID_SDK" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK" >> "$GITHUB_ENV"
+          echo "$ANDROID_SDK/platform-tools" >> "$GITHUB_PATH"
+          BUILD_TOOLS_DIR=$(find "$ANDROID_SDK/build-tools" -mindepth 1 -maxdepth 1 -type d | sort -V | tail -n1)
           echo "$BUILD_TOOLS_DIR" >> "$GITHUB_PATH"
-
-          CMDLINE_BIN="$ANDROID_HOME/cmdline-tools/latest/bin"
-          if [ ! -d "$CMDLINE_BIN" ]; then
-            CMDLINE_BIN=$(find "$ANDROID_HOME/cmdline-tools" -mindepth 2 -maxdepth 2 -type d -name bin | head -n1)
-          fi
-          yes | "$CMDLINE_BIN/sdkmanager" --licenses > /dev/null || true
-          "$CMDLINE_BIN/sdkmanager" --install "platform-tools" "emulator" "platforms;android-30" "system-images;android-30;google_apis;x86_64"
-          echo "no" | "$CMDLINE_BIN/avdmanager" create avd --force --name "morphe_test_avd" --package "system-images;android-30;google_apis;x86_64" --abi "x86_64" --device "pixel_4"
-
-      - name: Start Android Emulator (boot wait + retry)
-        run: |
-          export ANDROID_HOME="${ANDROID_HOME:-/usr/local/lib/android/sdk}"
-          ADB="$ANDROID_HOME/platform-tools/adb"
-          EMU="$ANDROID_HOME/emulator/emulator"
-          "$ADB" start-server
-
-          start_emulator() {
-            nohup "$EMU" \
-              -avd morphe_test_avd \
-              -no-window \
-              -gpu swiftshader_indirect \
-              -no-snapshot \
-              -noaudio \
-              -no-boot-anim \
-              -no-metrics \
-              -memory 4096 \
-              -accel on > /tmp/emulator.log 2>&1 &
-            EMU_PID=$!
-          }
-
-          wait_boot() {
-            for _ in $(seq 1 72); do
-              STATE=$("$ADB" shell getprop sys.boot_completed 2>/dev/null | tr -d '\r' || true)
-              if [ "$STATE" = "1" ]; then return 0; fi
-              if ! kill -0 "$EMU_PID" 2>/dev/null; then return 1; fi
-              sleep 5
-            done
-            return 1
-          }
-
-          start_emulator
-          if ! wait_boot; then
-            echo "::warning::First emulator boot attempt failed. Emulator log:"
-            tail -n 100 /tmp/emulator.log || true
-            kill "$EMU_PID" 2>/dev/null || true
-            pkill -f "qemu-system-x86_64" 2>/dev/null || true
-            sleep 5
-            "$ADB" kill-server || true
-            "$ADB" start-server || true
-            start_emulator
-            if ! wait_boot; then
-              echo "::error::Second emulator boot attempt failed. Emulator log:"
-              tail -n 200 /tmp/emulator.log || true
-              exit 1
-            fi
-          fi
-
-          "$ADB" shell settings put global window_animation_scale 0 || true
-          "$ADB" shell settings put global transition_animation_scale 0 || true
-          "$ADB" shell settings put global animator_duration_scale 0 || true
-          "$ADB" shell input keyevent 82 || true
-          echo "Android Emulator booted and ready: $( "$ADB" devices | tail -n +2 )"
 
       - name: Install Pipeline Dependencies & Tools (apkeep, fdroidserver, relevance)
         run: |
@@ -163,95 +101,71 @@ jobs:
           p.chmod(0o600)
           '
 
-      - name: Run OpenCode Agent (DeepSeek V4.1 Flash)
-        id: agent
-        continue-on-error: true
-        timeout-minutes: 32
+      - name: Run OpenCode Agent (DeepSeek V4.1 Flash) + Emulator Verification
+        timeout-minutes: 50
+        uses: reactivecircus/android-emulator-runner@v2
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           FORCE_REBUILD: ${{ inputs.force || 'false' }}
-        run: |
-          export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
-          FORCE_FLAG=""
-          if [ "$FORCE_REBUILD" = "true" ]; then
-            FORCE_FLAG="--force"
-          fi
+        with:
+          api-level: 30
+          target: google_apis
+          arch: x86_64
+          profile: pixel_4
+          avd-name: morphe_test_avd
+          emulator-boot-timeout: 900
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics -memory 4096
+          script: |
+            set -euo pipefail
+            export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
 
-          PROMPT="You are the non-interactive Relevance pipeline agent on GitHub Actions. Budget: 15 minutes. Execute ONLY the following steps and nothing else — do not read files, do not explore, do not fix code, do not run any extra commands.
-
-          STEP 1 (always): run \`python3 -m src.main check-updates --config apps.yaml $FORCE_FLAG\`
-
-          STEP 2 (exactly one of these):
-          - If every app reports \"needs_update\": false AND fdroid/repo/index-v1.jar exists, run: \`python3 -m src.main test-emulator --repo-dir fdroid/repo\`
-          - Otherwise run: \`python3 -m src.main run --config apps.yaml $FORCE_FLAG --test-emulator\`
-
-          STEP 3: If the STEP 2 command succeeded, reply with a 4-line summary (patched versions, emulator coexistence result, F-Droid repo status, any failures) and END YOUR RESPONSE IMMEDIATELY. If it failed, reply with the error and END."
-
-          set +e
-          timeout --preserve-status 1500s opencode run --variant minimal --model opencode-go/deepseek-v4.1-flash "$PROMPT"
-          AGENT_EXIT=$?
-          set -e
-          echo "agent_exit_code=$AGENT_EXIT" >> "$GITHUB_OUTPUT"
-          if [ "$AGENT_EXIT" -eq 124 ] || [ "$AGENT_EXIT" -eq 143 ]; then
-            echo "::warning::OpenCode agent hit its time budget; continuing with deterministic verification."
-          elif [ "$AGENT_EXIT" -ne 0 ]; then
-            echo "::warning::OpenCode agent exited with code $AGENT_EXIT; continuing with deterministic verification."
-          fi
-          exit 0
-
-      - name: Verify Built F-Droid Repo & Emulator Coexistence
-        if: always()
-        env:
-          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          FORCE_REBUILD: ${{ inputs.force || 'false' }}
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          echo "OpenCode agent exit code: ${{ steps.agent.outputs.agent_exit_code }}"
-
-          if [ ! -f fdroid/repo/index-v1.json ]; then
-            echo "F-Droid index missing after agent step; running deterministic pipeline..."
-            FORCE_FLAG=""
-            if [ "$FORCE_REBUILD" = "true" ]; then
+            if [ "${FORCE_REBUILD:-false}" = "true" ]; then
               FORCE_FLAG="--force"
+            else
+              FORCE_FLAG=""
             fi
+
+            PROMPT="You are the non-interactive Relevance pipeline agent on GitHub Actions. Budget: 15 minutes. Execute ONLY the following steps and nothing else — do not read files, do not explore, do not fix code, do not run any extra commands.
+
+            STEP 1 (always): run \`python3 -m src.main check-updates --config apps.yaml $FORCE_FLAG\`
+
+            STEP 2 (exactly one of these):
+            - If every app reports \"needs_update\": false AND fdroid/repo/index-v1.jar exists, run: \`python3 -m src.main test-emulator --repo-dir fdroid/repo\`
+            - Otherwise run: \`python3 -m src.main run --config apps.yaml $FORCE_FLAG --test-emulator\`
+
+            STEP 3: If the STEP 2 command succeeded, reply with a 4-line summary (patched versions, emulator coexistence result, F-Droid repo status, any failures) and END YOUR RESPONSE IMMEDIATELY. If it failed, reply with the error and END."
+
+            set +e
+            timeout --preserve-status 1500s opencode run --variant minimal --model opencode-go/deepseek-v4.1-flash "$PROMPT"
+            AGENT_EXIT=$?
+            set -e
+            echo "OpenCode agent exit code: $AGENT_EXIT"
+
+            echo "Running deterministic idempotent pipeline (fetch, patch if needed, emulator test, F-Droid index)..."
             python3 -m src.main run --config apps.yaml $FORCE_FLAG --test-emulator
-          fi
 
-          python3 -c '
-          import json
-          from pathlib import Path
-          idx = json.loads(Path("fdroid/repo/index-v1.json").read_text())
-          pkgs = {a["packageName"]: a.get("localized", {}).get("en-US", {}).get("name") or a.get("name") for a in idx.get("apps", [])}
-          print("Indexed F-Droid packages:", pkgs)
-          expected = {
-              "app.morphe.android.youtube",
-              "app.morphe.android.youtube.am",
-              "app.morphe.android.youtube.ru",
-              "app.morphe.android.youtube.de",
-          }
-          missing = expected - set(pkgs.keys())
-          assert not missing, f"Missing expected packages in F-Droid index: {missing}"
-          '
+            echo "Asserting F-Droid index contains all 4 variant packages..."
+            python3 -c '
+            import json
+            from pathlib import Path
+            idx = json.loads(Path("fdroid/repo/index-v1.json").read_text())
+            pkgs = {a["packageName"] for a in idx.get("apps", [])}
+            expected = {
+                "app.morphe.android.youtube",
+                "app.morphe.android.youtube.am",
+                "app.morphe.android.youtube.ru",
+                "app.morphe.android.youtube.de",
+            }
+            missing = expected - pkgs
+            assert not missing, f"Missing expected packages in F-Droid index: {missing}"
+            print("F-Droid index contains all 4 expected packages:", sorted(expected))
+            '
 
-          INSTALLED_PKGS=$(adb shell pm list packages 2>/dev/null || true)
-          VARIANT_PKGS="app.morphe.android.youtube app.morphe.android.youtube.am app.morphe.android.youtube.ru app.morphe.android.youtube.de"
-          NEEDS_EMULATOR_TEST=0
-          for pkg in $VARIANT_PKGS; do
-            if ! echo "$INSTALLED_PKGS" | grep -q "package:${pkg}$"; then
-              NEEDS_EMULATOR_TEST=1
-            fi
-          done
-          if [ "$NEEDS_EMULATOR_TEST" = "1" ]; then
-            echo "Verifying APKs on Android Emulator..."
-            python3 -m src.main test-emulator --repo-dir fdroid/repo
-          fi
-          echo "All 4 YouTube variants verified in F-Droid index and on Android Emulator!"
+            echo "All 4 YouTube variants verified in F-Droid index and on Android Emulator!"
 
       - name: Save F-Droid Repository Cache
         if: success()
