@@ -119,53 +119,7 @@ jobs:
           emulator-boot-timeout: 900
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -no-snapshot -noaudio -no-boot-anim -no-metrics -memory 4096
-          script: |
-            set -eu
-            export PATH="$HOME/.opencode/bin:$HOME/.local/bin:$PATH"
-
-            if [ "${FORCE_REBUILD:-false}" = "true" ]; then
-              FORCE_FLAG="--force"
-            else
-              FORCE_FLAG=""
-            fi
-
-            PROMPT="You are the non-interactive Relevance pipeline agent on GitHub Actions. Budget: 15 minutes. Execute ONLY the following steps and nothing else — do not read files, do not explore, do not fix code, do not run any extra commands.
-
-            STEP 1 (always): run \`python3 -m src.main check-updates --config apps.yaml $FORCE_FLAG\`
-
-            STEP 2 (exactly one of these):
-            - If every app reports \"needs_update\": false AND fdroid/repo/index-v1.jar exists, run: \`python3 -m src.main test-emulator --repo-dir fdroid/repo\`
-            - Otherwise run: \`python3 -m src.main run --config apps.yaml $FORCE_FLAG --test-emulator\`
-
-            STEP 3: If the STEP 2 command succeeded, reply with a 4-line summary (patched versions, emulator coexistence result, F-Droid repo status, any failures) and END YOUR RESPONSE IMMEDIATELY. If it failed, reply with the error and END."
-
-            set +e
-            timeout --preserve-status 1500s opencode run --variant minimal --model opencode-go/deepseek-v4.1-flash "$PROMPT"
-            AGENT_EXIT=$?
-            set -e
-            echo "OpenCode agent exit code: $AGENT_EXIT"
-
-            echo "Running deterministic idempotent pipeline (fetch, patch if needed, emulator test, F-Droid index)..."
-            python3 -m src.main run --config apps.yaml $FORCE_FLAG --test-emulator
-
-            echo "Asserting F-Droid index contains all 4 variant packages..."
-            python3 -c '
-            import json
-            from pathlib import Path
-            idx = json.loads(Path("fdroid/repo/index-v1.json").read_text())
-            pkgs = {a["packageName"] for a in idx.get("apps", [])}
-            expected = {
-                "app.morphe.android.youtube",
-                "app.morphe.android.youtube.am",
-                "app.morphe.android.youtube.ru",
-                "app.morphe.android.youtube.de",
-            }
-            missing = expected - pkgs
-            assert not missing, f"Missing expected packages in F-Droid index: {missing}"
-            print("F-Droid index contains all 4 expected packages:", sorted(expected))
-            '
-
-            echo "All 4 YouTube variants verified in F-Droid index and on Android Emulator!"
+          script: bash scripts/emulator_pipeline.sh
 
       - name: Save F-Droid Repository Cache
         if: success()
