@@ -1,1 +1,6 @@
 .direnv/
+art/raw/
+node_modules/
+dist/
+.wrangler/
+app/src/generated/
