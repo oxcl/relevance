@@ -264,7 +264,8 @@ export function setOutput(k: string, v: string) {
 }
 
 export async function latestReleaseAsset(ownerRepo: string, re: RegExp): Promise<{ url: string; name: string; tag: string }> {
-  const rels: any[] = await ghApi(`/repos/${ownerRepo}/releases?per_page=10`);
+  const all: any[] = await ghApi(`/repos/${ownerRepo}/releases?per_page=15`);
+  const rels = [...all.filter((r) => !r.prerelease), ...all.filter((r) => r.prerelease)];
   for (const rel of rels) {
     if (rel.draft) continue;
     const a = rel.assets.find((x: any) => re.test(x.name));

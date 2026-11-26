@@ -123,6 +123,7 @@ export async function plan(appId: string, opts: { force: boolean; trigger: Plan[
   log(`Target version: ${t.target ?? 'latest'} — ${t.reason}`);
 
   const dl = await getDownload(app.source, t.target, { fetch, githubToken: env.GITHUB_TOKEN });
+  if (t.target && dl.version !== t.target && !app.pin) warn(`Couldn't find a download for ${t.target} at the source; using what it offers (${dl.version || 'latest'})`);
   const version = dl.version || t.target;
   const same =
     state.current &&
@@ -223,6 +224,8 @@ export async function fetchApk(appId: string) {
   }
   const meta = await apkInfo(input);
   ok(`${meta.packageName} ${meta.versionName} (${meta.versionCode}), ${(statSync(input).size / 1048576).toFixed(1)} MB`);
+  if (p.version && meta.versionName !== p.version && app.source.type !== 'upload')
+    warn(`The source delivered ${meta.versionName} instead of the target ${p.version}; patches may not fully support it`);
   if (meta.packageName !== app.packageName) warn(`Package name ${meta.packageName} differs from the configured ${app.packageName}`);
   writeJson(`${WORK}/input.json`, meta);
   copyFileSync(input, `${WORK}/current.apk`);
