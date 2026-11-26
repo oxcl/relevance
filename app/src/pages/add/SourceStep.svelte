@@ -6,7 +6,7 @@
   import StepNav from '$c/StepNav.svelte';
   import { draft } from '$lib/draft.svelte';
   import { session, data, proxied } from '$lib/store.svelte';
-  import { detectSource, defaultAssetPattern, sourceAutoUpdates, sourceLabel, type SourceInfo } from '$shared/sources';
+  import { detectSource, defaultAssetPattern, rankAssets, parseGithubRepo, sourceAutoUpdates, sourceLabel, type SourceInfo } from '$shared/sources';
   import { isValidPackageName, formatBytes } from '$shared/logic';
   import { inspectFile, inspectUrl } from '$lib/apk';
   import { ripple, errorToast } from '$lib/ui.svelte';
@@ -67,8 +67,10 @@
         if (type === 'github') {
           const apks = (j.assets || []).filter((a: any) => /\.apk$/i.test(a.name));
           if (!apks.length) throw new Error('The newest release of that repository has no APK files');
-          const pattern = defaultAssetPattern(apks.map((a: any) => a.name));
-          const pick = apks.find((a: any) => new RegExp(pattern, 'i').test(a.name)) || apks[0];
+          const repoName = parseGithubRepo(url)?.repo || '';
+          const best = rankAssets(apks.map((a: any) => a.name), repoName)[0];
+          const pattern = defaultAssetPattern([best], repoName);
+          const pick = apks.find((a: any) => a.name === best) || apks[0];
           asset = pick.name;
           d.app.source.assetPattern = pattern;
           applyInfo(j);

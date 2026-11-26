@@ -55,6 +55,7 @@
 
   // guard: can't jump past what has been completed
   $effect(() => {
+    if (router.route.name !== 'add' && router.route.name !== 'edit') return;
     if (index > draft.d.visited + 1 && !draft.d.editing) navigate(`${base}/${steps[Math.min(draft.d.visited, steps.length - 1)].id}`, { replace: true });
     if (stepId === 'patches' && draft.d.app.tool === 'none') navigate(`${base}/customize`, { replace: true });
   });

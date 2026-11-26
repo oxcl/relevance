@@ -329,7 +329,8 @@
     position: absolute;
     right: -10px;
     top: -30px;
-    width: min(430px, 45%);
+    z-index: 0;
+    width: min(340px, 34%);
     animation: rise 1s var(--ease-out), sway 10s ease-in-out infinite;
   }
   .status {
@@ -382,6 +383,8 @@
     gap: 8px;
   }
   .done {
+    position: relative;
+    z-index: 1;
     margin-bottom: 16px;
     align-items: center;
   }
@@ -389,6 +392,8 @@
     flex: 1;
   }
   .steps {
+    position: relative;
+    z-index: 1;
     display: grid;
     gap: 10px;
   }

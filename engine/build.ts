@@ -300,6 +300,10 @@ export function rewriteManifest(xml: string, opts: { oldPkg: string; newPkg?: st
   if (opts.newPkg && opts.newPkg !== opts.oldPkg) {
     const oldP = opts.oldPkg;
     const newP = opts.newPkg;
+    // components keep their code in the old package: make relative class names absolute first
+    m = m.replace(/(<(?:activity|activity-alias|service|receiver|provider|application|instrumentation)\b[^>]*?android:(?:name|targetActivity|backupAgent)=")\.([^"]+)"/g, `$1${oldP}.$2"`);
+    m = m.replace(/(<(?:activity|activity-alias|service|receiver|provider|application)\b[^>]*?android:(?:name|targetActivity)=")\.([^"]+)"/g, `$1${oldP}.$2"`);
+    m = m.replace(/(<manifest\b[^>]*?\spackage=")[^"]+"/, `$1${newP}"`);
     // authorities must be unique per device
     m = m.replace(/android:authorities="([^"]*)"/g, (_, v: string) => {
       const parts = v.split(';').map((a) => (a.startsWith(oldP) ? newP + a.slice(oldP.length) : `${newP}.${a}`));
@@ -356,12 +360,6 @@ export async function customize(appId: string) {
   writeFileSync(manifestPath, next);
   if (c.name) ok(`Renamed the app to "${c.name}"`);
   if (c.packageName && c.packageName !== curPkg) {
-    const yml = join(dec, 'apktool.yml');
-    let y = readFileSync(yml, 'utf8');
-    if (/renameManifestPackage:/.test(y)) y = y.replace(/renameManifestPackage:.*/, `renameManifestPackage: ${c.packageName}`);
-    else if (/packageInfo:/.test(y)) y = y.replace(/packageInfo:\s*\n/, `packageInfo:\n  renameManifestPackage: ${c.packageName}\n`);
-    else y += `\npackageInfo:\n  renameManifestPackage: ${c.packageName}\n`;
-    writeFileSync(yml, y);
     ok(`Package name ${curPkg} → ${c.packageName}`);
   }
   info('Rebuilding APK');

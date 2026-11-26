@@ -84,20 +84,32 @@ async function gh(ctx: Ctx, path: string) {
   return r.json();
 }
 
-export function defaultAssetPattern(names: string[]): string {
-  const apks = names.filter((n) => /\.apk$/i.test(n));
-  const prefer =
-    apks.find((n) => /universal/i.test(n)) ||
-    apks.find((n) => /arm64/i.test(n)) ||
-    apks.find((n) => !/(x86|armeabi|debug)/i.test(n)) ||
-    apks[0];
+export function rankAssets(names: string[], repo = ''): string[] {
+  const tokens = repo.toLowerCase().split(/[^a-z0-9]+|(?<=[a-z])(?=[A-Z])/).filter((t) => t.length >= 3);
+  const rtoks = repo.replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 3);
+  const all = [...new Set([...tokens, ...rtoks])];
+  const score = (n: string) => {
+    const l = n.toLowerCase();
+    let s = 0;
+    for (const t of all) if (l.includes(t)) s += 2;
+    if (/universal/.test(l)) s += 1;
+    if (/arm64/.test(l)) s += 0.5;
+    if (/(x86|armeabi|debug|unsigned)/.test(l)) s -= 2;
+    if (/(-hw\b|huawei)/.test(l)) s -= 1;
+    return s;
+  };
+  return names.filter((n) => /\.apk$/i.test(n)).map((n, i) => [n, score(n) - i * 0.001] as const).sort((a, b) => b[1] - a[1]).map((x) => x[0]);
+}
+
+export function defaultAssetPattern(names: string[], repo = ''): string {
+  const prefer = rankAssets(names, repo)[0];
   if (!prefer) return '\\.apk$';
   // turn the concrete file name into a pattern by replacing version-ish parts
   return (
     '^' +
     prefer
       .replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      .replace(/v?\d+(\\\.\d+)+([-_.]?[a-z]*\d*)?/gi, '.+') +
+      .replace(/v?\d{3,}|v?\d+(\\\.\d+)+/g, '[\\w.]+') +
     '$'
   );
 }

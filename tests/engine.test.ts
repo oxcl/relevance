@@ -65,4 +65,9 @@ test('manifest rewrite', () => {
   expect(out).toContain('android:icon="@mipmap/relevance_icon"');
   expect(out).toContain('android:roundIcon="@mipmap/relevance_icon"');
   expect(out).toContain('<activity android:name="com.ex.app.Main" android:label="My &quot;App&quot;">');
+  expect(out).toContain('package="com.ex.app.clone"');
+  const rel = rewriteManifest('<manifest package="a.b"><application android:name=".App"><activity android:name=".Main"></activity></application></manifest>', { oldPkg: 'a.b', newPkg: 'a.b.c' });
+  expect(rel).toContain('android:name="a.b.App"');
+  expect(rel).toContain('android:name="a.b.Main"');
+  expect(rel).toContain('package="a.b.c"');
 });

@@ -106,7 +106,8 @@ export async function buildSite() {
   if (ksB64) {
     writeFileSync(`${fd}/keystore.p12`, Buffer.from(ksB64, 'base64'));
     const title = cfg.settings.store?.title || `${REPO.split('/')[0]}'s apps`;
-    await assetTo(`${cfg.settings.relevanceUrl}/icon-512.png`, `${fd}/repo/icons/icon.png`);
+    if (await assetTo(`${cfg.settings.relevanceUrl}/icon-512.png`, `${fd}/repo/icons/icon.png`)) copyFileSync(`${fd}/repo/icons/icon.png`, `${fd}/icon.png`);
+    else warn('Could not download the repository icon');
     writeFileSync(
       `${fd}/config.yml`,
       [

@@ -94,6 +94,7 @@ jobs:
       contents: read
       pages: write
       id-token: write
+      actions: read
 `;
 
 export const PUBLISH_WORKFLOW = `# Managed by Relevance (engine ${ENGINE_VERSION}). Changes may be overwritten.
@@ -108,6 +109,7 @@ permissions:
   contents: read
   pages: write
   id-token: write
+  actions: read
 
 concurrency:
   group: relevance-pages
@@ -129,6 +131,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          ref: ${x('github.event.repository.default_branch')}
       - name: Set up Node
         uses: actions/setup-node@v4
         with:

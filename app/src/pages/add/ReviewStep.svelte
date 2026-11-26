@@ -102,14 +102,14 @@
       if (!editing || (rebuild && changed) || (editing && rebuild)) {
         phase = 'Starting the build in GitHub Actions…';
         const run = await startBuild(id, true);
-        resetDraft();
         petals(24);
         toast(editing ? 'Saved — rebuilding now' : `${displayName(snapshot)} added — building now`, 'success');
         navigate(run ? `/builds/${run.id}` : `/apps/${id}`, { replace: true });
+        setTimeout(resetDraft, 800);
       } else {
-        resetDraft();
         toast('Changes saved', 'success');
         navigate(`/apps/${id}`, { replace: true });
+        setTimeout(resetDraft, 800);
       }
     } catch (e: any) {
       errorToast(e, 'Could not save');
