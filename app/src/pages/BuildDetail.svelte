@@ -74,12 +74,20 @@
   const current = $derived(runningIdx >= 0 ? stepDefs[runningIdx] : null);
   const elapsed = $derived(run ? (done ? new Date(run.updatedAt).getTime() : now) - new Date(run.runStartedAt || run.createdAt).getTime() : 0);
 
-  // auto-expand running / failed steps
+  // auto-expand the running step, collapse it again when it succeeds, keep failures open
+  const auto = new Set<string>();
   $effect(() => {
     stepDefs.forEach((s, i) => {
       const stt = states[i];
-      if (stt === 'running' && open[s.id] === undefined) open[s.id] = true;
-      if (stt === 'failure' && open[s.id] === undefined) open[s.id] = true;
+      if (stt === 'running' && open[s.id] === undefined) {
+        open[s.id] = true;
+        auto.add(s.id);
+      }
+      if (stt === 'success' && auto.has(s.id)) {
+        auto.delete(s.id);
+        setTimeout(() => (open[s.id] = false), 900);
+      }
+      if (stt === 'failure' && !open[s.id]) open[s.id] = true;
     });
   });
 

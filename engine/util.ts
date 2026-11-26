@@ -113,7 +113,7 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; env?: Rec
       for (const l of lines) {
         out += l + '\n';
         if (out.length > 2_000_000) out = out.slice(-1_000_000);
-        log(l);
+        if (!opts.quiet) log(l);
       }
     };
     p.stdout.on('data', onData);
@@ -122,8 +122,9 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; env?: Rec
     p.on('close', (code) => {
       if (partial) {
         out += partial;
-        log(partial);
+        if (!opts.quiet) log(partial);
       }
+      if (code !== 0 && opts.quiet) for (const l of out.split('\n').slice(-30)) log(l);
       code === 0 ? resolve(out) : reject(new Error(`${cmd} exited with code ${code}`));
     });
   });
