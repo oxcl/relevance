@@ -184,25 +184,37 @@ export async function resolveSource(src: AppSource, ctx: Ctx): Promise<SourceInf
       for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
         try {
           const j = JSON.parse(m[1]);
-          const arr = Array.isArray(j) ? j : [j];
-          ld = arr.find((x: any) => x['@type'] === 'MobileApplication') || ld;
+          const flat = (x: any): any[] => (Array.isArray(x) ? x.flatMap(flat) : x && typeof x === 'object' ? [x, ...flat(x['@graph'] || [])] : []);
+          ld = flat(j).find((x: any) => [].concat(x['@type'] || []).some((t: string) => /Application$/.test(t))) || ld;
         } catch {}
       }
-      const latest = html.match(/data-dt-version="([^"]+)"/)?.[1];
-      const icon =
-        html.match(/alt="[^"]*icon"\s+src="(https:\/\/image[^"]+)"/)?.[1] ||
-        (typeof ld?.image === 'string' ? ld.image : undefined);
-      const shots = [...new Set([...html.matchAll(/(https:\/\/image[^"\s]*?winudf\.com\/v2\/image1\/[^"\s]*?screen[^"\s]*)/g)].map((m) => decodeHtml(m[1]).replace(/\?.*$/, '')))].slice(0, 8);
+      const name = (ld?.name || decodeHtml(html.match(/<h1[^>]*>\s*([^<]+?)\s*</)?.[1] || '') || pkg).trim();
+      const latest = [...html.matchAll(/data-dt-version="([^"]+)"/g)].map((m) => m[1]).find((v) => !/SECONDARY/i.test(v));
+      const esc = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      let icon =
+        html.match(/class="app-icon-img"[^>]*?\ssrc="(https:\/\/image[^"]+)"/)?.[1] ||
+        html.match(new RegExp(`alt="${esc} icon"[^>]*?\\ssrc="(https://image[^"]+)"`))?.[1] ||
+        html.match(new RegExp(`src="(https://image[^"]+)"[^>]*alt="${esc} icon"`))?.[1] ||
+        (typeof ld?.image === 'string' && /icon/.test(ld.image) ? ld.image : undefined);
+      if (icon) icon = decodeHtml(icon).replace(/([?&])w=\d+/, '$1w=512');
+      const ldShots = [].concat(ld?.screenshot || []).map((x: any) => (typeof x === 'string' ? x : x?.url)).filter(Boolean);
+      const rawShots = ldShots.length ? ldShots : [...html.matchAll(/(https:\/\/image[^"\s]*?winudf\.com\/v2\/image1\/[^"\s]*?screen[^"\s]*)/g)].map((m) => m[1]);
+      const shots = [...new Map(rawShots.map((u: string) => {
+        const url = decodeHtml(u).replace(/([?&])h=\d+/, '$1h=1280');
+        return [url.replace(/\?.*$/, ''), url.includes('?') ? url : `${url}?fakeurl=1&type=.jpg`] as [string, string];
+      })).values()].slice(0, 8);
+      const descHtml = html.match(/<div class="description-content"[^>]*>([\s\S]*?)<\/div>/)?.[1];
+      const description = ld?.description || (descHtml ? decodeHtml(descHtml.replace(/<br\s*\/?>/g, '\n').replace(/<[^>]+>/g, '')).trim() : undefined);
       let versions: string[] | null = null;
       try {
         versions = sortVersionsDesc(Object.keys(await apkpureCodes(ctx, src.url)));
       } catch {}
       return {
         packageName: pkg,
-        name: ld?.name || decodeHtml(html.match(/<h1[^>]*>([^<]+)/)?.[1] || pkg),
-        summary: ld?.description ? String(ld.description).split(/(?<=\.)\s/)[0].slice(0, 80) : undefined,
-        description: ld?.description,
-        iconUrl: icon ? decodeHtml(icon) : undefined,
+        name,
+        summary: description ? summarize(String(description)) : undefined,
+        description,
+        iconUrl: icon,
         screenshots: shots,
         website: page,
         latest: versions?.[0] || latest,
@@ -224,6 +236,14 @@ export async function resolveSource(src: AppSource, ctx: Ctx): Promise<SourceInf
       };
     }
   }
+}
+
+/** First sentence, trimmed to fit an 80 character store summary. */
+export function summarize(text: string): string {
+  const first = text.replace(/\s+/g, ' ').trim().split(/(?<=[.!?])\s/)[0];
+  if (first.length <= 80) return first;
+  const cut = first.slice(0, 79);
+  return cut.slice(0, cut.lastIndexOf(' ') > 40 ? cut.lastIndexOf(' ') : 79).replace(/[,;:]$/, '') + '…';
 }
 
 export function fdroidPackage(url: string): string | null {

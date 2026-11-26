@@ -4,6 +4,7 @@
   import Icon from '$c/Icon.svelte';
   import Hero from '$c/Hero.svelte';
   import Dialog from '$c/Dialog.svelte';
+  import ToolLogo from '$c/ToolLogo.svelte';
   import { data, patchSources, loadIndex, saveConfig, checkUpdates } from '$lib/store.svelte';
   import type { PatchToolId, PatchSource } from '$shared/types';
   import { slugify } from '$shared/logic';
@@ -51,9 +52,9 @@
 <div class="grid">
   {#each sources as s, i (s.id)}
     {@const idx = data.indexes[s.id]}
-    <article class="card pad src {s.tool}" style="--i:{i}" use:tilt={3}>
+    <article class="card pad src {s.tool}" style="--i:{i}">
       <div class="top">
-        <span class="ic"><Icon name={s.tool === 'lspatch' ? 'extension' : s.tool === 'morphe' ? 'deployed_code' : 'play_arrow'} fill /></span>
+        <ToolLogo tool={s.tool} size={48} />
         <div class="grow">
           <h3 class="title">{s.name}</h3>
           <span class="muted small">{toolLabel[s.tool]}{s.builtin ? ' · built in' : ' · custom'}</span>

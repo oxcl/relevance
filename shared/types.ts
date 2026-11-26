@@ -29,6 +29,8 @@ export interface PatchOptionDef {
 
 export interface PatchCompat {
   packageName: string;
+  /** app name, when the patch list provides it */
+  name?: string;
   /** null or empty = any version */
   versions: string[] | null;
   /** SHA-256 digests of the original app's signing certificates, when the patch maintainers publish them */
@@ -264,4 +266,4 @@ export interface StepDef {
   subtitle: string;
 }
 
-export const ENGINE_VERSION = '1.3.0';
+export const ENGINE_VERSION = '1.3.1';

@@ -89,6 +89,18 @@
     customOpen = true;
   }
   const visibleSpecific = $derived(specific.filter(match));
+  const recommended = $derived(specific.filter((p) => p.default !== false));
+  function applyRecommended() {
+    app.patches = recommended.map((p) => ({ name: p.name, options: selected(p.name)?.options }));
+  }
+  const selMode = $derived.by(() => {
+    const names = new Set(app.patches.map((p) => p.name));
+    const same = (list: PatchDef[]) => list.length === names.size && list.every((p) => names.has(p.name));
+    if (!names.size) return 'none';
+    if (!isModules && same(recommended)) return 'recommended';
+    if (same(specific)) return 'all';
+    return 'custom';
+  });
   const missing = $derived(index && !isModules ? app.patches.filter((p) => !all.some((d) => d.name === p.name)) : []);
   const count = $derived(app.patches.length + app.customPatches.filter((c) => c.enabled).length);
   const base = router.route.name === 'edit' ? `/apps/${router.route.params.id}/edit` : '/add';
@@ -108,8 +120,11 @@
       <Icon name="search" size={20} />
       <input class="input" placeholder="Search {isModules ? 'modules' : 'patches'}…" bind:value={query} />
       {#if specific.length}
-        <button class="btn text sm" onclick={() => (app.patches = visibleSpecific.map((p) => ({ name: p.name, options: selected(p.name)?.options })))}>All</button>
-        <button class="btn text sm" onclick={() => (app.patches = [])}>None</button>
+        <div class="quick" role="group" aria-label="Quick selection">
+          <button class:on={selMode === 'all'} onclick={() => (app.patches = specific.map((p) => ({ name: p.name, options: selected(p.name)?.options })))}>All</button>
+          {#if !isModules}<button class:on={selMode === 'recommended'} onclick={applyRecommended}>Recommended</button>{/if}
+          <button class:on={selMode === 'none'} onclick={() => (app.patches = [])}>None</button>
+        </div>
       {/if}
     </div>
     {#if missing.length}
@@ -186,7 +201,7 @@
         <div class="notice error small"><Icon name="error" />The selected patches don't share a supported version. Deselect some.</div>
       {:else}
         <div class="tv mono">{app.pin ? `v${app.pin}` : target.target ? `v${target.target}` : 'latest'}</div>
-        <p class="muted small">{app.pin ? 'Pinned — always build this version.' : target.reason}</p>
+        <p class="muted small">{app.pin ? 'Pinned — always build this version.' : app.source.type === 'apkpure' && /may not provide/.test(target.reason) ? 'Newest version all selected patches support. Relevance downloads exactly this version from APKPure.' : target.reason}</p>
       {/if}
     {/if}
     <hr class="divider" />
@@ -259,6 +274,35 @@
 <StepNav {go} canNext={!target.conflict && !missing.length} />
 
 <style>
+  .quick {
+    display: flex;
+    padding: 3px;
+    border-radius: 999px;
+    background: var(--container);
+    flex: 0 0 auto;
+  }
+  .quick button {
+    border: 0;
+    background: none;
+    padding: 7px 14px;
+    border-radius: 999px;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: var(--text-2);
+    cursor: pointer;
+    transition: background-color 0.25s var(--ease), color 0.25s;
+  }
+  .quick button.on {
+    background: var(--surface);
+    color: var(--text);
+    box-shadow: var(--shadow-1);
+  }
+  .rec {
+    margin-left: 8px;
+    height: 20px;
+    font-size: 0.7rem;
+    vertical-align: middle;
+  }
   .missing {
     margin-bottom: 12px;
   }

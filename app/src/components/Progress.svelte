@@ -1,19 +1,27 @@
 <script lang="ts">
-  let { value = 0, indeterminate = false, label = true, tone = 'olive' }: { value?: number; indeterminate?: boolean; label?: boolean; tone?: 'olive' | 'terra' } = $props();
+  let { value = 0, indeterminate = false, label = false, tone = 'olive' }: { value?: number; indeterminate?: boolean; label?: boolean; tone?: 'olive' | 'terra' } = $props();
   const pct = $derived(Math.round(Math.max(0, Math.min(1, value)) * 100));
 </script>
 
-<div class="bar {tone}" class:indeterminate role="progressbar" aria-valuenow={pct} aria-valuemin="0" aria-valuemax="100">
-  <div class="fill" style="transform:scaleX({indeterminate ? 1 : value})">
-    <span class="shine"></span>
+<div class="wrap">
+  <div class="bar {tone}" class:indeterminate role="progressbar" aria-valuenow={pct} aria-valuemin="0" aria-valuemax="100">
+    <div class="fill" style="transform:scaleX({indeterminate ? 1 : value})">
+      <span class="shine"></span>
+    </div>
   </div>
-  {#if label && !indeterminate}<span class="pct" style="left:clamp(18px, {pct}%, calc(100% - 18px))">{pct}%</span>{/if}
+  {#if label && !indeterminate}<span class="pct">{pct}%</span>{/if}
 </div>
 
 <style>
+  .wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
   .bar {
+    flex: 1;
     position: relative;
-    height: 12px;
+    height: 10px;
     border-radius: 999px;
     background: var(--container-high);
     overflow: visible;
@@ -51,13 +59,11 @@
     }
   }
   .pct {
-    position: absolute;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    font: 600 0.62rem var(--mono);
-    color: var(--on-olive);
-    transition: left 0.9s var(--ease-emph);
-    pointer-events: none;
-    opacity: 0.95;
+    flex: 0 0 auto;
+    min-width: 3.2em;
+    text-align: right;
+    font: 600 0.95rem var(--font);
+    font-variant-numeric: tabular-nums;
+    color: var(--text);
   }
 </style>

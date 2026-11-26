@@ -160,7 +160,8 @@ export async function buildSite() {
     const shots: string[] = [];
     let i = 1;
     for (const s of app.listing?.screenshots || []) {
-      const ext = /\.(jpe?g)$/i.test(s) ? 'jpg' : /\.webp$/i.test(s) ? 'webp' : 'png';
+      const bare = s.replace(/[?#].*$/, '');
+      const ext = /\.(jpe?g)$/i.test(bare) ? 'jpg' : /\.webp$/i.test(bare) ? 'webp' : 'png';
       if (await assetTo(s, `${dir}/shots/${i}.${ext}`)) shots.push(`shots/${i}.${ext}`);
       i++;
     }
@@ -240,7 +241,7 @@ function fdroidCard(fdroidAdd: string, depth: number) {
   <div>
     <h2>F-Droid repository</h2>
     <p>Add this repository in F-Droid to install and receive updates automatically.</p>
-    <div class="copy-row"><code>${esc(fdroidAdd.split('?')[0])}</code><button class="icon-btn" data-copy="${esc(fdroidAdd)}" aria-label="Copy">${ICON.copy}</button></div>
+    <div class="copy-row"><code title="${esc(fdroidAdd)}">${esc(fdroidAdd)}</code><button class="icon-btn" data-copy="${esc(fdroidAdd)}" aria-label="Copy">${ICON.copy}</button></div>
     <a class="btn filled" href="fdroidrepos://${esc(fdroidAdd.replace(/^https?:\/\//, ''))}">${ICON.download} Open in F-Droid</a>
   </div>
   <img class="qr" src="${base}qr.svg" alt="QR code for the F-Droid repository" width="132" height="132">

@@ -9,6 +9,7 @@
   import { router, navigate } from '$lib/router.svelte';
   import { data, session, gh, appState, appStatus, displayName, displayPackage, startBuild, checkUpdates, saveConfig, publishSite, sourceFor, refresh } from '$lib/store.svelte';
   import { sourceLabel, sourceAutoUpdates } from '$shared/sources';
+  import { missingCompanion, companionApp } from '$shared/companions';
   import { formatBytes, encodeRecipe, recipeFromApp } from '$shared/logic';
   import { ripple, toast, errorToast, timeAgo, duration, copy } from '$lib/ui.svelte';
 
@@ -21,6 +22,24 @@
   let delReleases = $state(false);
   let busy = $state('');
   let editMenu = $state(false);
+  const companion = $derived(app ? missingCompanion(data.config, app) : null);
+  async function addCompanion() {
+    if (!companion) return;
+    busy = 'companion';
+    try {
+      let cid = '';
+      await saveConfig((c) => {
+        const ca = companionApp(companion, c.apps.map((a) => a.id));
+        cid = ca.id;
+        c.apps.push(ca);
+      }, `relevance: add ${companion.name}`);
+      await startBuild(cid, true);
+      toast(`${companion.name} added — building now`, 'success');
+    } catch (e) {
+      errorToast(e);
+    }
+    busy = '';
+  }
   let trustOpen = $state(false);
   const shortCert = (c?: string) => (c ? c.slice(0, 16).toUpperCase().replace(/(.{4})/g, '$1 ').trim() + '…' : '—');
   async function trustNewSignature() {
@@ -172,6 +191,14 @@
         {#if st.history[0]?.runId}<a class="btn sm ghost" href="/builds/{st.history[0].runId}">Log</a>{/if}
         <button class="btn sm ghost" onclick={dismissAttention}>Dismiss</button>
       </div>
+    </div>
+  {/if}
+
+  {#if companion}
+    <div class="notice comp" transition:slide>
+      <Icon name="info" />
+      <span><b>{displayName(app)} needs {companion.name}.</b> {companion.why}</span>
+      <button class="btn sm" disabled={busy === 'companion'} onclick={addCompanion}>Add {companion.name}</button>
     </div>
   {/if}
 
@@ -387,6 +414,13 @@
     --bg-btn: transparent;
     --fg-btn: inherit;
     box-shadow: inset 0 0 0 1.5px currentColor;
+  }
+  .comp {
+    margin-bottom: 16px;
+    align-items: center;
+  }
+  .comp span {
+    flex: 1;
   }
   .tabs {
     position: relative;

@@ -9,6 +9,7 @@ export function fromPatchesList(j: any): PatchDef[] {
     packages: p.compatiblePackages
       ? p.compatiblePackages.map((c: any) => ({
           packageName: c.packageName,
+          name: c.name || undefined,
           signatures: Array.isArray(c.signatures) && c.signatures.length ? c.signatures.map((x: string) => x.toLowerCase().replace(/[^0-9a-f]/g, '')) : undefined,
           versions: (() => {
             const v: string[] = c.targets

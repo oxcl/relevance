@@ -4,6 +4,7 @@
   import Hero from '$c/Hero.svelte';
   import AppIcon from '$c/AppIcon.svelte';
   import StepNav from '$c/StepNav.svelte';
+  import PatchableApps from '$c/PatchableApps.svelte';
   import { draft } from '$lib/draft.svelte';
   import { session, data, proxied } from '$lib/store.svelte';
   import { detectSource, defaultAssetPattern, rankAssets, parseGithubRepo, sourceAutoUpdates, sourceLabel, type SourceInfo } from '$shared/sources';
@@ -140,6 +141,8 @@
 </script>
 
 <Hero title="Where does the app come from?" art="source" artWidth={420} compact />
+
+<PatchableApps onpick={(pkg) => { tab = 'store'; url = `https://apkpure.com/app/${pkg}`; error = ''; fetchInfo(); }} />
 
 <div class="tabs" role="tablist">
   {#each tabs as [k, l, ic]}

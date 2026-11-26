@@ -4,7 +4,7 @@
   import Icon from '$c/Icon.svelte';
   import Stepper from '$c/Stepper.svelte';
   import QR from '$c/QR.svelte';
-  import { gh, session, useRepo, engineFiles, signOut } from '$lib/store.svelte';
+  import { gh, session, useRepo, engineFiles, signOut, runAndWatch, fdroidReachable } from '$lib/store.svelte';
   import type { RepoSummary } from '$lib/provider';
   import type { RelevanceConfig } from '$shared/types';
   import { repoReadme } from '$shared/templates';
@@ -178,22 +178,46 @@
       }
       pagesUrl = pagesUrl.replace(/\/$/, '');
 
-      t(4, 'run');
-      try {
-        await new Promise((r) => setTimeout(r, 1500));
-        await gh().dispatch(fullName, 'relevance-publish.yml', {});
-        t(4, 'ok', 'Running in your GitHub Actions — ready in a few minutes');
-      } catch (e: any) {
-        t(4, 'warn', e.message);
-      }
       finished = true;
-      petals();
+      await new Promise((r) => setTimeout(r, 1500));
+      await publish();
     } catch (e: any) {
       const i = tasks.findIndex((x) => x.status === 'run');
       if (i >= 0) t(i, 'fail', e.message);
       errorToast(e, 'Setup failed');
     }
     working = false;
+  }
+
+  let published = $state<'idle' | 'running' | 'ok' | 'failed'>('idle');
+  let publishRunUrl = $state('');
+  async function publish() {
+    const i = 4;
+    published = 'running';
+    tasks[i].status = 'run';
+    tasks[i].note = 'Starting in your GitHub Actions…';
+    try {
+      const run = await runAndWatch(fullName, 'relevance-publish.yml', {}, (r) => {
+        publishRunUrl = r.htmlUrl;
+        tasks[i].note = r.status === 'queued' ? 'Waiting for a GitHub runner…' : r.status === 'completed' ? 'Finishing…' : 'Building the F-Droid index and store site…';
+      });
+      if (run.conclusion !== 'success') throw new Error(`The publish run ${run.conclusion === 'cancelled' ? 'was cancelled' : 'failed'} — open it on GitHub for details`);
+      tasks[i].note = 'Checking that your repository answers…';
+      let ok = false;
+      for (let k = 0; k < 24 && !ok; k++) {
+        ok = await fdroidReachable(pagesUrl);
+        if (!ok) await new Promise((r) => setTimeout(r, 5000));
+      }
+      if (!ok) throw new Error(`Published, but ${pagesUrl}/fdroid/repo isn't answering yet. GitHub Pages can take a few minutes on a new repository — try again shortly.`);
+      tasks[i].status = 'ok';
+      tasks[i].note = 'Live on GitHub Pages';
+      published = 'ok';
+      petals();
+    } catch (e: any) {
+      tasks[i].status = 'fail';
+      tasks[i].note = e.message;
+      published = 'failed';
+    }
   }
 
   async function finish() {
@@ -365,12 +389,20 @@
               </div>
             {/each}
           </div>
-          {#if finished}
+          {#if published === 'failed'}
+            <div class="notice error" in:fly={{ y: 10 }}>
+              <Icon name="error" />
+              <span>Your F-Droid repository isn't online yet, so the link below won't work until publishing succeeds.</span>
+              <button class="btn sm" onclick={publish}>Try again</button>
+              {#if publishRunUrl}<a class="btn sm outlined" href={publishRunUrl} target="_blank" rel="noreferrer">View run</a>{/if}
+            </div>
+          {/if}
+          {#if published === 'ok'}
             <div class="card pad fdroid" in:fly={{ y: 20, duration: 600 }}>
               <div>
                 <h3 class="title">Your F-Droid repository</h3>
                 <p class="muted small">Scan the code in F-Droid (Settings → Repositories → +) or open the link on your phone.</p>
-                <button class="fp mono" onclick={() => copy(fdroidUrl)}>{pagesUrl}/fdroid/repo<Icon name="content_copy" size={16} /></button>
+                <button class="fp mono" onclick={() => copy(fdroidUrl)}>{fdroidUrl}<Icon name="content_copy" size={16} /></button>
                 <div class="wrap-row">
                   <a class="btn sm" href="fdroidrepos://{fdroidUrl.replace(/^https?:\/\//, '')}" data-native><Icon name="android" size={18} /> Open in F-Droid</a>
                   <a class="btn sm outlined" href={pagesUrl} target="_blank" rel="noreferrer"><Icon name="storefront" size={18} /> Store site</a>
@@ -397,7 +429,7 @@
         {step === 2 ? 'Set up my repository' : 'Continue'} <Icon name="arrow_forward" />
       </button>
     {:else}
-      <button class="btn lg" disabled={!finished} onclick={finish} use:ripple>Go to dashboard <Icon name="arrow_forward" /></button>
+      <button class="btn lg" disabled={!finished || published === 'running' || published === 'idle'} onclick={finish} use:ripple>Go to dashboard <Icon name="arrow_forward" /></button>
     {/if}
   </footer>
 </div>

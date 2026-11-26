@@ -189,7 +189,8 @@ export async function indexSource(src: PatchSource): Promise<PatchIndex> {
 
 async function indexLsposed(): Promise<PatchDef[]> {
   let mods: any[] | null = null;
-  for (const url of ['https://modules.lsposed.org/modules.json', 'https://modules.lsposed.org/modules.json?']) {
+  // the main site challenges CI runners; the project publishes an official public mirror on GitHub Pages
+  for (const url of ['https://modules.lsposed.org/modules.json', 'https://backup.modules.lsposed.org/modules.json']) {
     try {
       const r = await fetch(url);
       if (r.ok) {

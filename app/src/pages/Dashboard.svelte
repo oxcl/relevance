@@ -28,7 +28,7 @@
   const first = $derived((session.user?.name || session.user?.login || '').split(' ')[0]);
 </script>
 
-<Hero title="{greeting()}{first ? `, ${first}` : ''}!" subtitle="Let's make your apps even better." art="dashboard" artWidth={620} />
+<Hero banner title="{greeting()}{first ? `, ${first}` : ''}!" subtitle="Let's make your apps even better." art="dashboard-wide" />
 
 {#if attention.length}
   <section class="attention" transition:slide>

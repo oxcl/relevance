@@ -35,7 +35,7 @@
 
 <svelte:window onclick={() => (menu = false)} />
 
-<a class="app card hover" href="/apps/{app.id}" style="--i:{i}" use:tilt={3}>
+<a class="app card hover" href="/apps/{app.id}" style="--i:{i}">
   <div class="head">
     <AppIcon {app} size={58} vt="icon-{app.id}" />
     <button class="icon-btn sm more" aria-label="More" onclick={(e) => { e.preventDefault(); e.stopPropagation(); menu = !menu; }}><Icon name="more_vert" size={20} /></button>
@@ -64,11 +64,10 @@
   .app {
     display: grid;
     gap: 2px;
-    padding: 16px 16px 14px;
+    padding: 18px 18px 16px;
     text-decoration: none;
     animation: rise 0.6s var(--ease-out) both;
     animation-delay: calc(var(--i) * 50ms);
-    background-image: radial-gradient(circle at var(--mx, 50%) var(--my, 0%), color-mix(in srgb, var(--olive-c) 35%, transparent), transparent 60%);
     min-width: 0;
   }
   .head {

@@ -224,7 +224,7 @@
 
   <div class="status">
     <div class="pbar">
-      <Progress value={progress} tone={run.conclusion === 'failure' ? 'terra' : 'olive'} />
+      <Progress value={progress} label tone={run.conclusion === 'failure' ? 'terra' : 'olive'} />
       <div class="meta muted">
         <span class="row"><Icon name="schedule" size={18} /> {done ? 'Took' : 'Running for'} {duration(elapsed)}</span>
         <span>·</span>
@@ -245,8 +245,9 @@
   {#if done && run.conclusion === 'success' && run.kind === 'build' && st?.current}
     <div class="notice success done" in:fly={{ y: 10 }}>
       <Icon name="celebration" />
-      <span><b>{app ? displayName(app) : 'App'} v{st.current.version}</b> is published. It appears in your F-Droid repository and store once the publish step finishes.</span>
-      <a class="btn sm" href={st.current.url} data-native><Icon name="download" size={18} /> APK</a>
+      <span><b>{app ? displayName(app) : 'App'} v{st.current.version}</b> is published to your F-Droid repository and store.</span>
+      {#if data.pagesUrl && app}<a class="btn sm" href="{data.pagesUrl}/apps/{app.id}/" target="_blank" rel="noreferrer"><Icon name="storefront" size={18} /> Open in your store</a>{/if}
+      {#if app}<a class="btn sm outlined" href="/apps/{app.id}">App page</a>{/if}
     </div>
   {/if}
   {#if done && run.conclusion === 'failure' && st?.attention}
@@ -355,7 +356,7 @@
     gap: 10px;
   }
   .pbar :global(.bar) {
-    height: 16px;
+    height: 12px;
   }
   .meta {
     display: flex;

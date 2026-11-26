@@ -5,6 +5,7 @@
   import Hero from '$c/Hero.svelte';
   import Dialog from '$c/Dialog.svelte';
   import StepNav from '$c/StepNav.svelte';
+  import ToolLogo from '$c/ToolLogo.svelte';
   import { draft } from '$lib/draft.svelte';
   import { loadIndex, patchSources, data } from '$lib/store.svelte';
   import { specificPatches, newestSupported, versionsFor } from '$shared/logic';
@@ -77,11 +78,10 @@
       style="--i:{i}"
       onclick={() => pick(t.id)}
       onkeydown={(e) => (e.key === 'Enter' || e.key === ' ') && pick(t.id)}
-      use:tilt={4}
       use:ripple
     >
       {#if on}<span class="check" in:scale={{ duration: 400, start: 0.2 }}><Icon name="check_circle" fill size={26} /></span>{/if}
-      <span class="t-ic"><Icon name={t.icon} size={30} fill /></span>
+      <span class="t-ic"><ToolLogo tool={t.id} size={56} /></span>
       <h3 class="t-name">{t.name}</h3>
       {#if t.sub}<div class="muted sub">{t.sub}</div>{/if}
       {#if t.id === 'none'}
@@ -176,27 +176,15 @@
   .t-ic {
     width: 56px;
     height: 56px;
-    border-radius: 18px;
+    border-radius: 26%;
     display: grid;
     place-items: center;
-    background: var(--olive);
-    color: var(--on-olive);
+    overflow: hidden;
+    box-shadow: var(--shadow-1);
     transition: transform 0.5s var(--ease-spring);
   }
   .tool:hover .t-ic {
-    transform: rotate(-8deg) scale(1.06);
-  }
-  .terra .t-ic {
-    background: var(--terra);
-    color: var(--on-terra);
-  }
-  .plum .t-ic {
-    background: var(--plum);
-    color: var(--surface);
-  }
-  .sand .t-ic {
-    background: var(--amber-c);
-    color: var(--olive);
+    transform: scale(1.04);
   }
   .t-name {
     font-size: 1.55rem;

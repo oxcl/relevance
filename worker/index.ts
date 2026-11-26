@@ -183,6 +183,25 @@ export default {
         return res;
       }
 
+      // LSPosed module repository (its site challenges GitHub runners; the indexer reads it through here)
+      if (p === '/api/lsposed/modules') {
+        const cache = (caches as any).default as Cache;
+        const key = new Request('https://cache.relevance/lsposed-modules');
+        const hit = await cache.match(key);
+        if (hit) return hit;
+        const r = await fetch('https://modules.lsposed.org/modules.json', { headers: { Accept: 'application/json' } });
+        if (!r.ok) return err(`modules.lsposed.org responded ${r.status}`, 502);
+        const text = await r.text();
+        try {
+          JSON.parse(text);
+        } catch {
+          return err('modules.lsposed.org did not return JSON', 502);
+        }
+        const res = new Response(text, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=21600' } });
+        ctx.waitUntil(cache.put(key, res.clone()));
+        return res;
+      }
+
       // APKPure version codes (its pages challenge datacenter clients such as GitHub runners)
       if (p === '/api/apkpure/codes') {
         const page = url.searchParams.get('url') || '';

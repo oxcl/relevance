@@ -129,7 +129,7 @@
   }
 </script>
 
-<svelte:window onclick={() => ((bellOpen = false), (userOpen = false))} />
+<svelte:window onclick={(e) => { if (!(e.target as Element)?.closest?.('.pop-anchor')) { bellOpen = false; userOpen = false; } }} />
 
 {#if session.status === 'idle' || (session.status === 'loading' && !publicRoutes.has(name))}
   <div class="boot" out:fade={{ duration: 300 }}>
@@ -176,12 +176,12 @@
           {#key theme.pref + String(isDark())}<span in:scale={{ duration: 400, start: 0.3 }}><Icon name={isDark() ? 'light_mode' : 'dark_mode'} /></span>{/key}
         </button>
         <div class="pop-anchor">
-          <button class="icon-btn" class:ringing={badge > 0} aria-label="Notifications" onclick={(e) => { e.stopPropagation(); bellOpen = !bellOpen; userOpen = false; }}>
+          <button class="icon-btn" class:ringing={badge > 0} aria-label="Notifications" onclick={() => { bellOpen = !bellOpen; userOpen = false; }}>
             <Icon name={badge ? 'notifications_active' : 'notifications'} fill={bellOpen} />
             {#if badge}<span class="badge" in:scale={{ start: 0.2, duration: 400 }}>{badge}</span>{/if}
           </button>
           {#if bellOpen}
-            <div class="popover" role="dialog" aria-label="Notifications" onclick={(e) => e.stopPropagation()} onkeydown={() => {}} tabindex="-1" transition:fly={{ y: -8, duration: 260 }}>
+            <div class="popover" role="dialog" aria-label="Notifications" tabindex="-1" transition:fly={{ y: -8, duration: 260 }}>
               <div class="pop-title">Notifications</div>
               {#each running as r (r.id)}
                 <a class="note" href="/builds/{r.id}" onclick={() => (bellOpen = false)}>
@@ -202,11 +202,11 @@
           {/if}
         </div>
         <div class="pop-anchor">
-          <button class="avatar" aria-label="Account" onclick={(e) => { e.stopPropagation(); userOpen = !userOpen; bellOpen = false; }}>
+          <button class="avatar" aria-label="Account" onclick={() => { userOpen = !userOpen; bellOpen = false; }}>
             {#if session.user?.avatarUrl}<img src={session.user.avatarUrl} alt="" />{:else}{session.user?.login?.[0]}{/if}
           </button>
           {#if userOpen}
-            <div class="popover user" onclick={(e) => e.stopPropagation()} onkeydown={() => {}} role="menu" tabindex="-1" transition:fly={{ y: -8, duration: 260 }}>
+            <div class="popover user" role="menu" tabindex="-1" transition:fly={{ y: -8, duration: 260 }}>
               <div class="who">
                 <img src={session.user?.avatarUrl} alt="" />
                 <div><b>{session.user?.name || session.user?.login}</b><div class="muted small mono">@{session.user?.login}</div></div>
@@ -421,6 +421,7 @@
   }
 
   .topbar {
+    view-transition-name: topbar;
     grid-area: top;
     position: sticky;
     top: 0;

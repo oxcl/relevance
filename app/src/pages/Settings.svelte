@@ -173,7 +173,7 @@
         <Icon name="public" size={20} /><span>Store website</span>
         {#if data.pagesUrl}<a class="tag mono" href={data.pagesUrl} target="_blank" rel="noreferrer">{data.pagesUrl.replace(/^https:\/\//, '')} <Icon name="open_in_new" size={12} /></a>{:else}<span class="muted small">Not published yet</span>{/if}
         <Icon name="android" size={20} /><span>F-Droid repository</span>
-        {#if fdroid}<button class="tag mono copyable" onclick={() => copy(fdroidAdd)}>{fdroid.replace(/^https:\/\//, '')} <Icon name="content_copy" size={12} /></button>{:else}<span class="muted small">—</span>{/if}
+        {#if fdroid}<button class="tag mono copyable" onclick={() => copy(fdroidAdd)} title={fdroidAdd}>{fdroidAdd.replace(/^https:\/\//, '')} <Icon name="content_copy" size={12} /></button>{:else}<span class="muted small">—</span>{/if}
       </div>
       {#if session.repoInfo?.private}<div class="notice small"><Icon name="warning" />This repository is private: the F-Droid repository, store site and direct downloads don't work.</div>{/if}
       {#if fdroidAdd}

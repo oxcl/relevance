@@ -121,7 +121,7 @@ jobs:
     timeout-minutes: 40
     environment:
       name: github-pages
-      url: ${x('steps.deploy.outputs.page_url')}
+      url: ${x("steps.deploy.outputs.page_url || steps.deploy2.outputs.page_url || steps.deploy3.outputs.page_url")}
     env:
       GITHUB_TOKEN: ${x('github.token')}
       RELEVANCE_KEYSTORE: ${x('secrets.RELEVANCE_KEYSTORE')}
@@ -152,8 +152,26 @@ jobs:
         with:
           path: _site
           retention-days: 90
+      # GitHub sometimes doesn't list a freshly uploaded artifact yet ("No artifacts named
+      # github-pages were found"), so give it time and retry instead of failing the publish.
       - name: Deploy to GitHub Pages
         id: deploy
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+      - name: Wait for the artifact to become visible
+        if: steps.deploy.outcome == 'failure'
+        run: sleep 30
+      - name: Deploy to GitHub Pages (second try)
+        id: deploy2
+        if: steps.deploy.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+      - name: Wait a little longer
+        if: steps.deploy2.outcome == 'failure'
+        run: sleep 90
+      - name: Deploy to GitHub Pages (last try)
+        id: deploy3
+        if: steps.deploy2.outcome == 'failure'
         uses: actions/deploy-pages@v5
 `;
 

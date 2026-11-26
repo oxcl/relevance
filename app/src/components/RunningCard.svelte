@@ -58,7 +58,7 @@
     {#key curName}<span class="cur">{curName}</span>{/key}
   </div>
   <div class="bar">
-    <Progress value={progress} />
+    <Progress value={progress} label />
     <span class="muted small mono">{duration(now - new Date(run.runStartedAt || run.createdAt).getTime())}</span>
   </div>
   <div class="acts">

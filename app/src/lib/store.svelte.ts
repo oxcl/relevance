@@ -251,6 +251,41 @@ export async function startBuild(appId: string, force = true) {
   return null;
 }
 
+/** Dispatch a workflow and follow the run it creates until it finishes. */
+export async function runAndWatch(
+  repo: string,
+  workflow: string,
+  inputs: Record<string, string>,
+  onUpdate: (run: WorkflowRun) => void,
+): Promise<WorkflowRun> {
+  const since = Date.now() - 5000;
+  await gh().dispatch(repo, workflow, inputs);
+  let run: WorkflowRun | undefined;
+  for (let i = 0; i < 40 && !run; i++) {
+    await new Promise((r) => setTimeout(r, 2500));
+    const runs = await gh().listRuns(repo, { perPage: 5, workflow });
+    run = runs.find((r) => new Date(r.createdAt).getTime() >= since);
+  }
+  if (!run) throw new Error('GitHub did not start the workflow');
+  onUpdate(run);
+  while (run.status !== 'completed') {
+    await new Promise((r) => setTimeout(r, 5000));
+    run = await gh().getRun(repo, run.id);
+    onUpdate(run);
+  }
+  return run;
+}
+
+/** True once the F-Droid index answers on GitHub Pages. */
+export async function fdroidReachable(pagesUrl: string): Promise<boolean> {
+  try {
+    const r = await fetch(`${pagesUrl}/fdroid/repo/index-v1.json?t=${Date.now()}`, { cache: 'no-store' });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+
 export async function checkUpdates(appId?: string) {
   await gh().dispatch(session.repo!, 'relevance-update.yml', { app: appId || '' });
 }

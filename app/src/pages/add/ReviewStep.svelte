@@ -10,6 +10,8 @@
   import { sourceLabel, sourceAutoUpdates } from '$shared/sources';
   import type { FileChange } from '$lib/provider';
   import { navigate } from '$lib/router.svelte';
+  import { missingCompanion, companionApp } from '$shared/companions';
+  import ToolLogo from '$c/ToolLogo.svelte';
   import { errorToast, toast, petals } from '$lib/ui.svelte';
 
   let { go }: { go: (d: number) => void } = $props();
@@ -18,6 +20,8 @@
   const exp = (d as any).iconExport as { png: Uint8Array; fg: Uint8Array; background: string } | null;
   const preview = (d as any).iconPreview as string | null;
   let rebuild = $state(true);
+  const companion = $derived(missingCompanion(data.config, app));
+  let addCompanion = $state(true);
   let busy = $state(false);
   let phase = $state('');
   const toolName = { revanced: 'ReVanced', morphe: 'Morphe', lspatch: 'LSPatch', none: 'No patching' }[app.tool];
@@ -88,11 +92,18 @@
       const prev = data.config?.apps.find((a) => a.id === id);
       const changed = !prev || (await configHash(prev)) !== (await configHash(app as any));
       const snapshot = $state.snapshot(app) as any;
+      let companionId: string | null = null;
       await saveConfig(
         (cfg) => {
           const i = cfg.apps.findIndex((a) => a.id === id);
           if (i >= 0) cfg.apps[i] = snapshot;
           else cfg.apps.push(snapshot);
+          const c = addCompanion ? missingCompanion(cfg, snapshot) : null;
+          if (c) {
+            const ca = companionApp(c, cfg.apps.map((a) => a.id));
+            cfg.apps.push(ca);
+            companionId = ca.id;
+          }
         },
         d.editing ? `relevance: update ${displayName(snapshot)}` : `relevance: add ${displayName(snapshot)}`,
         files,
@@ -102,6 +113,7 @@
       const editing = d.editing;
       if (!editing || (rebuild && changed) || (editing && rebuild)) {
         phase = 'Starting the build in GitHub Actions…';
+        if (companionId) await startBuild(companionId, true).catch(() => {});
         const run = await startBuild(id, true);
         petals(24);
         toast(editing ? 'Saved — rebuilding now' : `${displayName(snapshot)} added — building now`, 'success');
@@ -171,6 +183,17 @@
     </ol>
   </section>
 </div>
+
+{#if companion}
+  <section class="card pad companion" in:fly={{ y: 16, delay: 260 }}>
+    <span class="cic"><ToolLogo tool={app.tool} size={48} /></span>
+    <div class="grow">
+      <h3 class="title">{app.name} needs {companion.name}</h3>
+      <p class="muted small">{companion.why} Relevance can add {companion.name} to your store too, kept up to date from its official releases.</p>
+    </div>
+    <label class="row add-c"><input type="checkbox" bind:checked={addCompanion} /> Add {companion.name}</label>
+  </section>
+{/if}
 
 {#if d.editing}
   <label class="rebuild"><input type="checkbox" bind:checked={rebuild} /> Rebuild right away</label>
@@ -251,6 +274,29 @@
     background: var(--container);
     font: 700 0.75rem var(--mono);
     flex: 0 0 auto;
+  }
+  .companion {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    margin-top: 16px;
+    border: 1.5px solid color-mix(in srgb, var(--olive) 35%, var(--outline));
+    background: color-mix(in srgb, var(--olive-c) 25%, var(--surface));
+  }
+  .companion p {
+    margin: 4px 0 0;
+  }
+  .grow {
+    flex: 1;
+  }
+  .add-c {
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .add-c input {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--olive);
   }
   .rebuild {
     display: flex;
