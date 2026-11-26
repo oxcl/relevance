@@ -67,7 +67,7 @@ const KEY = 'rv-draft';
 export function persistDraft() {
   try {
     const d = $state.snapshot(draft.d) as any;
-    sessionStorage.setItem(KEY, JSON.stringify({ ...d, uploadFile: null, iconUploadBlob: null, newShots: [], iconBase: d.iconBase?.startsWith('blob:') ? null : d.iconBase }));
+    sessionStorage.setItem(KEY, JSON.stringify({ ...d, uploadFile: null, iconUploadBlob: null, sourceIconBlob: null, iconExport: null, newShots: [], iconBase: d.iconBase?.startsWith('blob:') ? null : d.iconBase }));
   } catch {}
 }
 export function restoreDraft(): boolean {

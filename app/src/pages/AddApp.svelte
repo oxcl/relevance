@@ -44,7 +44,7 @@
     }
   } else if (router.route.params.step === undefined && !router.route.query.has('keep')) {
     if (draft.d.editing) resetDraft();
-  } else if (!draft.d.app.source.url && !draft.d.editing) {
+  } else if (!draft.d.info && !draft.d.app.packageName && !draft.d.editing) {
     restoreDraft();
   }
 

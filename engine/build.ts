@@ -335,6 +335,19 @@ export async function customize(appId: string) {
   const manifestPath = join(dec, 'AndroidManifest.xml');
   const xml = readFileSync(manifestPath, 'utf8');
   const curPkg = xml.match(/<manifest\b[^>]*package="([^"]+)"/)?.[1] || meta.packageName;
+  // drop icon resources from an earlier Relevance build of this APK (re-customizing a clone)
+  const resDir = join(dec, 'res');
+  for (const d of existsSync(resDir) ? readdirSync(resDir) : []) {
+    const dir = join(resDir, d);
+    for (const f of readdirSync(dir)) {
+      if (f.startsWith('relevance_icon')) rmSync(join(dir, f));
+      else if (d.startsWith('values') && f.endsWith('.xml') && f !== 'public.xml') {
+        const t = readFileSync(join(dir, f), 'utf8');
+        const n = t.replace(/^\s*<(color|drawable|mipmap)\s+name="relevance_icon[^"]*"[^>]*(?:\/>|>[^<]*<\/\1>)\s*$/gm, '');
+        if (n !== t) writeFileSync(join(dir, f), n);
+      }
+    }
+  }
   if (c.icon) {
     const iconFile = c.icon.path;
     if (!existsSync(iconFile)) throw new Error(`Icon ${iconFile} not found in repository`);
@@ -372,6 +385,7 @@ export async function customize(appId: string) {
 
 export async function sign(appId: string) {
   const bt = buildTools();
+  const alias = loadConfig().settings.signing?.alias || env.RELEVANCE_KEY_ALIAS || 'relevance';
   const ks = `${WORK}/keystore.p12`;
   if (!env.RELEVANCE_KEYSTORE) throw new Error('Signing key secret RELEVANCE_KEYSTORE is missing — open Relevance settings to set it up');
   writeFileSync(ks, Buffer.from(env.RELEVANCE_KEYSTORE, 'base64'));
@@ -386,7 +400,7 @@ export async function sign(appId: string) {
     '--ks-type', 'PKCS12',
     '--ks-pass', 'env:RELEVANCE_KEYSTORE_PASSWORD',
     '--key-pass', 'env:RELEVANCE_KEYSTORE_PASSWORD',
-    '--ks-key-alias', env.RELEVANCE_KEY_ALIAS || 'relevance',
+    '--ks-key-alias', alias,
     '--v1-signing-enabled', 'true',
     '--v2-signing-enabled', 'true',
     '--v3-signing-enabled', 'true',

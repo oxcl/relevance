@@ -166,7 +166,6 @@
       for (const b of key!.p12) bin += String.fromCharCode(b);
       await gh().setSecret(fullName, 'RELEVANCE_KEYSTORE', btoa(bin));
       await gh().setSecret(fullName, 'RELEVANCE_KEYSTORE_PASSWORD', key!.password);
-      await gh().setSecret(fullName, 'RELEVANCE_KEY_ALIAS', key!.alias);
       t(2, 'ok');
 
       t(3, 'run');

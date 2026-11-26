@@ -8,6 +8,8 @@ const P = process.env.PREFIX || '';
 const U = 'https://relevance.cocoparrot-backend.workers.dev';
 const browser = await chromium.launch({ executablePath: process.env.CHROME, args: ['--no-sandbox'] });
 const page = await (await browser.newContext({ viewport: { width: 1440, height: 950 } })).newPage();
+page.on('requestfinished', async (r) => { if (/upload|releases|git\/|dispatches/.test(r.url())) console.log('req', r.method(), r.url().slice(0, 110), (await r.response())?.status()); });
+page.on('requestfailed', (r) => console.log('reqfail', r.url().slice(0, 100), r.failure()?.errorText));
 page.on('pageerror', (e) => console.log('pageerror', e.message));
 page.on('console', (m) => m.type() === 'error' && console.log('console', m.text()));
 await page.goto(U + '/api/config');
@@ -19,8 +21,13 @@ await snap('01-dashboard');
 await page.goto(U + '/add', { waitUntil: 'networkidle' });
 await page.waitForTimeout(1500);
 if (TAB === 'github') await page.click('.tabchip:has-text("GitHub Releases")');
-await page.fill('input.input.mono', SRC);
-await page.click('button.fetch');
+if (TAB === 'upload') {
+  await page.click('.tabchip:has-text("Upload APK")');
+  await page.setInputFiles('input[type=file]', SRC);
+} else {
+  await page.fill('input.input.mono', SRC);
+  await page.click('button.fetch');
+}
 await page.waitForSelector('.found', { timeout: 30000 });
 await snap('02-source');
 await page.click('.nav .btn.lg');
@@ -34,7 +41,7 @@ await page.click('.nav .btn.lg');
 if (TOOL !== 'none') { await page.waitForSelector('.layout'); await page.waitForTimeout(2500); await snap('03b-patches'); await page.click('.nav .btn.lg'); }
 await page.waitForSelector('.ids');
 if (CUSTOM) {
-await page.fill('.ids input.input >> nth=0', 'Binary Eye Mod');
+await page.fill('.ids input.input >> nth=0', process.env.NAME || 'Binary Eye Mod');
 await page.click('button:has-text("Suggest")');
 await page.check('.toggle input');
 await page.waitForTimeout(1200);
@@ -44,12 +51,16 @@ await page.locator('.slider.hue input').fill('40');
 await snap('04-customize');
 await page.click('.nav .btn.lg');
 await page.waitForSelector('.form');
+const sum = page.locator('.form input.input').first();
+if (!(await sum.inputValue())) await sum.fill('A sideloaded clone, uploaded by hand.');
 await snap('05-listing');
 await page.click('.nav .btn.lg');
 await page.waitForSelector('.plan');
 await snap('06-review');
 await page.click('.nav .btn.lg');
-await page.waitForURL(/\/builds\/\d+/, { timeout: 90000 });
+await page.waitForTimeout(2500);
+console.log('after-click toasts', await page.locator('.toast').allTextContents(), await page.locator('.phase').allTextContents(), await page.locator('.nav .btn.lg').isEnabled());
+await page.waitForURL(/\/builds\/\d+/, { timeout: 90000 }).catch(async () => { await page.screenshot({ path: `${out}/${P}fail.png` }); console.log('toasts', await page.locator('.toast').allTextContents()); });
 await page.waitForTimeout(+(process.env.WAIT || 25000));
 await snap('07-build');
 console.log('url', page.url());

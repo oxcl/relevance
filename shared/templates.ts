@@ -46,7 +46,6 @@ jobs:
       GITHUB_TOKEN: ${x('github.token')}
       RELEVANCE_KEYSTORE: ${x('secrets.RELEVANCE_KEYSTORE')}
       RELEVANCE_KEYSTORE_PASSWORD: ${x('secrets.RELEVANCE_KEYSTORE_PASSWORD')}
-      RELEVANCE_KEY_ALIAS: ${x('secrets.RELEVANCE_KEY_ALIAS')}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -127,7 +126,6 @@ jobs:
       GITHUB_TOKEN: ${x('github.token')}
       RELEVANCE_KEYSTORE: ${x('secrets.RELEVANCE_KEYSTORE')}
       RELEVANCE_KEYSTORE_PASSWORD: ${x('secrets.RELEVANCE_KEYSTORE_PASSWORD')}
-      RELEVANCE_KEY_ALIAS: ${x('secrets.RELEVANCE_KEY_ALIAS')}
     steps:
       - name: Checkout
         uses: actions/checkout@v7

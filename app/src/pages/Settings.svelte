@@ -82,7 +82,6 @@
       for (const b of newKey.p12) bin += String.fromCharCode(b);
       await gh().setSecret(session.repo!, 'RELEVANCE_KEYSTORE', btoa(bin));
       await gh().setSecret(session.repo!, 'RELEVANCE_KEYSTORE_PASSWORD', newKey.password);
-      await gh().setSecret(session.repo!, 'RELEVANCE_KEY_ALIAS', newKey.alias);
       await saveConfig(
         (c) => (c.settings.signing = { mode: newKey.uploaded ? 'custom' : 'generated', fingerprint: newKey.fingerprint, alias: newKey.alias, createdAt: new Date().toISOString() }),
         'relevance: replace signing key',

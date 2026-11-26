@@ -42,7 +42,8 @@
       const dir = `.relevance/apps/${id}`;
       const files: FileChange[] = [];
 
-      if (app.source.type === 'upload' && d.uploadFile) {
+      if (app.source.type === 'upload' && !app.source.url && !(d.uploadFile instanceof File)) throw new Error('The uploaded APK was lost after a reload — please pick the file again in the Source step.');
+      if (app.source.type === 'upload' && d.uploadFile instanceof File) {
         phase = 'Uploading the APK to your repository…';
         const v = d.uploadMeta?.versionName || 'upload';
         const rel = await gh().createRelease(repo, `source-${id}-${v.replace(/[^\w.-]/g, '_')}`, `Source upload: ${app.name} ${v}`, 'Uploaded to Relevance as a build source. Not a published build.');
@@ -51,7 +52,7 @@
       }
 
       phase = 'Preparing files…';
-      if (d.sourceIconBlob) {
+      if (d.sourceIconBlob instanceof Blob) {
         files.push({ path: `${dir}/source-icon.png`, content: new Uint8Array(await d.sourceIconBlob.arrayBuffer()) });
         app.iconUrl = `${dir}/source-icon.png`;
       }
@@ -59,7 +60,7 @@
         files.push({ path: `${dir}/icon.png`, content: exp.png });
         files.push({ path: `${dir}/icon-fg.png`, content: exp.fg });
         files.push({ path: `${dir}/icon.json`, content: JSON.stringify({ background: exp.background }) + '\n' });
-        if (d.iconMode === 'upload' && d.iconUploadBlob) files.push({ path: `${dir}/icon-base.png`, content: new Uint8Array(await d.iconUploadBlob.arrayBuffer()) });
+        if (d.iconMode === 'upload' && d.iconUploadBlob instanceof Blob) files.push({ path: `${dir}/icon-base.png`, content: new Uint8Array(await d.iconUploadBlob.arrayBuffer()) });
         app.customize.icon = {
           mode: d.iconMode,
           path: `${dir}/icon.png`,

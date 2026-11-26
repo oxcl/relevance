@@ -119,7 +119,7 @@ export async function buildSite() {
         `keystore: keystore.p12`,
         `keystorepass: ${JSON.stringify(env.RELEVANCE_KEYSTORE_PASSWORD || '')}`,
         `keypass: ${JSON.stringify(env.RELEVANCE_KEYSTORE_PASSWORD || '')}`,
-        `repo_keyalias: ${JSON.stringify(env.RELEVANCE_KEY_ALIAS || 'relevance')}`,
+        `repo_keyalias: ${JSON.stringify(cfg.settings.signing?.alias || env.RELEVANCE_KEY_ALIAS || 'relevance')}`,
         `keydname: "CN=Relevance"`,
         `make_current_version_link: false`,
         '',
