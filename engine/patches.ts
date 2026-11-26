@@ -1,6 +1,8 @@
 // Patch bundles: resolve builtin + custom sources and produce normalized indexes.
 import { existsSync, readFileSync } from 'node:fs';
 import type { PatchDef, PatchIndex, PatchSource, PatchToolId, PatchOptionDef } from '../shared/types';
+import { fromPatchesList } from '../shared/patchlist';
+export { fromPatchesList };
 import { download, ghApi, info, latestReleaseAsset, log, run, WORK } from './util';
 
 export const INDEX_BASE = 'https://raw.githubusercontent.com/oxcl/relevance/index';
@@ -145,35 +147,6 @@ export function parseListPatches(text: string): PatchDef[] {
   }
   for (const p of out) delete (p as any)._section;
   return out.filter((p) => p.name);
-}
-
-/** Morphe-style patches-list.json → PatchDef[] */
-export function fromPatchesList(j: any): PatchDef[] {
-  return (j.patches || []).map((p: any) => ({
-    name: p.name,
-    description: p.description,
-    default: p.default !== false,
-    packages: p.compatiblePackages
-      ? p.compatiblePackages.map((c: any) => ({
-          packageName: c.packageName,
-          versions: (() => {
-            const v: string[] = c.targets
-              ? c.targets.filter((t: any) => !t.isExperimental).map((t: any) => t.version).filter(Boolean)
-              : c.versions || [];
-            return v.length ? v : null;
-          })(),
-        }))
-      : null,
-    options: (p.options || []).map((o: any) => ({
-      key: o.key,
-      title: o.title,
-      description: o.description?.trim(),
-      required: o.required,
-      type: o.type,
-      default: o.default,
-      values: o.values,
-    })),
-  }));
 }
 
 async function tryPatchesList(url: string): Promise<{ patches: PatchDef[]; version: string } | null> {

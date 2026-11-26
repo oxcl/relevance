@@ -3,7 +3,11 @@
     "target": "ES2022",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": [
+      "ES2022",
+      "DOM",
+      "DOM.Iterable"
+    ],
     "strict": true,
     "noImplicitAny": false,
     "skipLibCheck": true,
@@ -12,7 +16,26 @@
     "noEmit": true,
     "verbatimModuleSyntax": false,
     "isolatedModules": true,
-    "types": ["node", "svelte"]
+    "types": [
+      "node",
+      "svelte"
+    ],
+    "paths": {
+      "$shared/*": [
+        "./shared/*"
+      ],
+      "$lib/*": [
+        "./app/src/lib/*"
+      ],
+      "$c/*": [
+        "./app/src/components/*"
+      ]
+    },
+    "baseUrl": "."
   },
-  "include": ["app/src/**/*", "shared/**/*", "engine/**/*"]
+  "include": [
+    "app/src/**/*",
+    "shared/**/*",
+    "engine/**/*"
+  ]
 }

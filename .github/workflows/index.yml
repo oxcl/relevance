@@ -1,0 +1,48 @@
+name: Patch index
+run-name: Index ReVanced, Morphe and LSPosed patches
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['engine/**', 'shared/**', '.github/workflows/index.yml']
+
+permissions:
+  contents: write
+
+concurrency:
+  group: patch-index
+  cancel-in-progress: true
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: oven-sh/setup-bun@v2
+      - name: Build engine
+        run: bun build engine/main.ts --target node --format esm --outfile engine.mjs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Index builtin patch sources
+        run: RELEVANCE_WORK=/tmp/work node engine.mjs index --builtin --out out
+      - name: Publish to the index branch
+        run: |
+          ls -la out
+          cd out
+          git init -q -b index
+          git config user.name "Relevance indexer"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -qm "Patch index $(date -u +%FT%TZ)"
+          git push -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" index

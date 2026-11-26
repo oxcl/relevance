@@ -105,7 +105,7 @@ export function defaultAssetPattern(names: string[]): string {
 async function githubReleases(ctx: Ctx, src: AppSource) {
   const r = parseGithubRepo(src.url);
   if (!r) throw new Error('Not a GitHub repository URL');
-  const rels: any[] = await gh(ctx, `/repos/${r.owner}/${r.repo}/releases?per_page=30`);
+  const rels: any[] = (await gh(ctx, `/repos/${r.owner}/${r.repo}/releases?per_page=30`)) as any[];
   return { repo: r, releases: rels.filter((x) => !x.draft && (src.prerelease || !x.prerelease)) };
 }
 
