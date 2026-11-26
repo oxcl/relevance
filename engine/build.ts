@@ -127,7 +127,7 @@ export async function plan(appId: string, opts: { force: boolean; trigger: Plan[
   const same =
     state.current &&
     version &&
-    state.current.version === version &&
+    (state.current.sourceVersion ?? state.current.version) === version &&
     state.configHash === hash &&
     (!index || state.patchVersion === index.version);
   const p: Plan = {
@@ -466,6 +466,7 @@ export async function publish(appId: string) {
     patches: app.tool === 'none' ? [] : [...app.patches.map((x) => x.name), ...app.customPatches.filter((c) => c.enabled).map((c) => c.name)],
     tool: app.tool,
     patchVersion: p.patchVersion,
+    sourceVersion: p.version || meta.versionName,
   };
   const started = new Date(p.startedAt).getTime();
   await updateState(

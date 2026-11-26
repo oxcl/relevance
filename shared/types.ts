@@ -194,6 +194,8 @@ export interface ReleaseEntry {
   patches: string[];
   tool: ToolId;
   patchVersion?: string;
+  /** version as reported by the source (e.g. a release tag) */
+  sourceVersion?: string;
 }
 
 export interface BuildEntry {
@@ -258,4 +260,4 @@ export interface StepDef {
   subtitle: string;
 }
 
-export const ENGINE_VERSION = '1.0.2';
+export const ENGINE_VERSION = '1.0.3';

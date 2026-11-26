@@ -16,6 +16,6 @@ await page.waitForTimeout(+wait);
 await page.evaluate(async () => { for (let y = 0; y < document.body.scrollHeight; y += 400) { scrollTo(0, y); await new Promise((r) => setTimeout(r, 120)); } scrollTo(0, 0); });
 await page.waitForTimeout(900);
 if (script) { await page.evaluate(script); await page.waitForTimeout(1500); }
-await page.screenshot({ path: out, fullPage: true });
+await page.screenshot({ path: out, fullPage: process.env.FULL !== '0' });
 console.log(errors.join('\n') || 'no errors');
 await browser.close();

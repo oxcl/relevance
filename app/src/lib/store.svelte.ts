@@ -4,7 +4,6 @@ import { BUILD_WORKFLOW, PUBLISH_WORKFLOW, updateWorkflow } from '$shared/templa
 import { fromPatchesList } from '$shared/patchlist';
 import { GitHubProvider } from './github';
 import type { FileChange, ProviderUser, RepoSummary, WorkflowRun } from './provider';
-import engineSource from '../generated/engine.mjs?raw';
 
 export const BUILTIN_SOURCES: PatchSource[] = [
   { id: 'revanced', tool: 'revanced', name: 'ReVanced', url: 'https://gitlab.com/ReVanced/revanced-patches', builtin: true },
@@ -210,14 +209,15 @@ export async function saveConfig(mutate: (cfg: RelevanceConfig) => void, message
   const cfg: RelevanceConfig = latest ? JSON.parse(latest.text) : structuredClone($state.snapshot(data.config));
   mutate(cfg);
   const files: FileChange[] = [{ path: 'relevance.json', content: JSON.stringify(cfg, null, 2) + '\n' }, ...extra];
-  if (data.engineVersion !== ENGINE_VERSION) files.push(...engineFiles(repo));
+  if (data.engineVersion !== ENGINE_VERSION) files.push(...(await engineFiles(repo)));
   await gh().commit(repo, files, message);
   data.config = cfg;
   if (data.engineVersion !== ENGINE_VERSION) data.engineVersion = ENGINE_VERSION;
   return cfg;
 }
 
-export function engineFiles(repo: string): FileChange[] {
+export async function engineFiles(repo: string): Promise<FileChange[]> {
+  const engineSource = (await import('../generated/engine.mjs?raw')).default;
   return [
     { path: '.relevance/engine.mjs', content: engineSource },
     { path: '.relevance/engine.version', content: ENGINE_VERSION + '\n' },
@@ -229,7 +229,7 @@ export function engineFiles(repo: string): FileChange[] {
 
 export async function ensureEngine() {
   if (!session.repo || !data.loaded || data.engineVersion === ENGINE_VERSION) return false;
-  await gh().commit(session.repo, engineFiles(session.repo), `relevance: update build engine to ${ENGINE_VERSION}`);
+  await gh().commit(session.repo, await engineFiles(session.repo), `relevance: update build engine to ${ENGINE_VERSION}`);
   data.engineVersion = ENGINE_VERSION;
   return true;
 }
@@ -276,7 +276,7 @@ export function appStatus(app: AppConfig): 'building' | 'failed' | 'needs-review
   if (s.status === 'failed') return 'failed';
   if (s.status === 'needs-review') return 'needs-review';
   if (!s.current) return 'never';
-  if (s.targetVersion && s.current.version !== s.targetVersion) return 'update';
+  if (s.targetVersion && (s.current.sourceVersion ?? s.current.version) !== s.targetVersion) return 'update';
   return 'ok';
 }
 

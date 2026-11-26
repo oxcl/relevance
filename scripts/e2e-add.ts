@@ -27,8 +27,11 @@ await page.click('.nav .btn.lg');
 await page.waitForSelector('.tools');
 await page.waitForTimeout(2500);
 await snap('03-tool');
-await page.click('.tool:has-text("No patching")');
+const TOOL = process.env.TOOL || 'none';
+if (TOOL === 'none') await page.click('.tool:has-text("No patching")');
+else await page.click(`.tool:has-text("${TOOL}")`);
 await page.click('.nav .btn.lg');
+if (TOOL !== 'none') { await page.waitForSelector('.layout'); await page.waitForTimeout(2500); await snap('03b-patches'); await page.click('.nav .btn.lg'); }
 await page.waitForSelector('.ids');
 if (CUSTOM) {
 await page.fill('.ids input.input >> nth=0', 'Binary Eye Mod');

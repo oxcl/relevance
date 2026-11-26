@@ -10,7 +10,7 @@ for (const n of [...new Set(list)]) {
   for (const v of [n, `${n}-fill`]) {
     const f = `${dir}/${v}.svg`;
     if (!existsSync(f)) { if (v === n) missing.push(n); continue; }
-    const d = [...readFileSync(f, 'utf8').matchAll(/ d="([^"]+)"/g)].map((m) => m[1]).join(' ').replace(/-?\d*\.\d+/g, (n) => String(Math.round(Number(n))));
+    const d = [...readFileSync(f, 'utf8').matchAll(/ d="([^"]+)"/g)].map((m) => m[1]).join(' ').replace(/-?\d*\.\d+/g, (n) => String(Math.round(Number(n) * 10) / 10));
     out[v] = d;
   }
 }

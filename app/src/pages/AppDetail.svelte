@@ -115,7 +115,7 @@
       <div class="row wrap">
         <StatusPill {status} />
         {#if st.current}<span class="tag mono">v{st.current.version}</span>{/if}
-        {#if st.targetVersion && st.targetVersion !== st.current?.version}<span class="tag amber mono">→ v{st.targetVersion}</span>{/if}
+        {#if st.targetVersion && st.targetVersion !== (st.current?.sourceVersion ?? st.current?.version)}<span class="tag amber mono">→ v{st.targetVersion}</span>{/if}
         <span class="tag">{toolName[app.tool]}</span>
       </div>
     </div>
@@ -276,10 +276,13 @@
     margin-bottom: 20px;
   }
   .meta {
-    flex: 1;
-    min-width: 220px;
+    flex: 1 1 220px;
+    min-width: 0;
     display: grid;
     gap: 6px;
+  }
+  .meta .mono {
+    overflow-wrap: anywhere;
   }
   .name {
     font-size: clamp(1.9rem, 4vw, 2.8rem);

@@ -153,7 +153,7 @@
       cfg.settings.signing = { mode: keyMode === 'generate' ? 'generated' : 'custom', fingerprint: key!.fingerprint, alias: key!.alias, createdAt: new Date().toISOString() };
       const files = [
         { path: 'relevance.json', content: JSON.stringify(cfg, null, 2) + '\n' },
-        ...engineFiles(fullName),
+        ...(await engineFiles(fullName)),
         ...(key!.certPem ? [{ path: '.relevance/signing-cert.pem', content: key!.certPem }] : []),
       ];
       const readme = await gh().readText(fullName, 'README.md');

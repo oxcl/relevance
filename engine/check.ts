@@ -85,7 +85,7 @@ export async function checkUpdates(only?: string) {
         !st.current ||
         st.configHash !== hash ||
         (index && st.patchVersion !== index.version) ||
-        (auto && target && target !== st.current.version);
+        (auto && target && target !== (st.current.sourceVersion ?? st.current.version));
       await updateState(
         app.id,
         (s) => {
