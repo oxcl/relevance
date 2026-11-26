@@ -21,6 +21,8 @@ Live: https://relevance.cocoparrot-backend.workers.dev
 
 - **app/** — the web app (Svelte 5 + Vite). All data lives in the user's repository.
 - **engine/** — the build engine, bundled to one file and committed into each user's repository.
+  APKPure apps are listed and downloaded with EFF's [apkeep](https://github.com/EFForg/apkeep)
+  (pinned by SHA-256), because APKPure's website challenges CI runners.
   Steps: plan → fetch (merges XAPK/APKS with APKEditor) → patch (ReVanced CLI, Morphe CLI, LSPatch)
   → customize (apktool: name, package, icon) → sign (apksigner) → publish (GitHub release)
   → site (fdroidserver index + static store site).

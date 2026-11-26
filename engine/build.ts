@@ -34,6 +34,8 @@ import {
   writeJson,
 } from './util';
 import { notify } from './notify';
+import { apkeepDownload, apkeepVersions } from './apkeep';
+import { apkpurePage } from '../shared/sources';
 
 export function srcCtx() {
   let resolver = env.RELEVANCE_URL;
@@ -41,6 +43,34 @@ export function srcCtx() {
     resolver ||= loadConfig().settings.relevanceUrl;
   } catch {}
   return { fetch: (i: any, o?: any) => fetch(i, o), githubToken: env.GITHUB_TOKEN, resolver };
+}
+
+/** Versions the app's source can deliver. APKPure goes through apkeep (its website challenges CI runners). */
+export async function sourceVersions(app: AppConfig): Promise<{ versions: string[] | null; latest?: string }> {
+  if (app.source.type === 'apkpure') {
+    const versions = await apkeepVersions(apkpurePage(app.source.url).pkg);
+    return { versions, latest: versions[0] };
+  }
+  const si = await resolveSource(app.source, srcCtx());
+  return { versions: si.versions, latest: si.latest || si.versions?.[0] };
+}
+
+/** A concrete download for exactly `version` (or the newest one when null). Never substitutes another version. */
+export async function sourceDownload(app: AppConfig, version: string | null): Promise<{ url: string; fileName: string; version?: string }> {
+  if (app.source.type === 'apkpure') {
+    const pkg = apkpurePage(app.source.url).pkg;
+    const versions = await apkeepVersions(pkg);
+    const want = version || versions[0];
+    if (!versions.includes(want))
+      throw Object.assign(new Error(`APKPure doesn't offer ${pkg} ${want}, which your patches need (newest there: ${versions[0]})`), {
+        attention: 'no-compatible-version',
+      });
+    return { url: `apkeep:${pkg}@${want}`, fileName: `${pkg}.apk`, version: want };
+  }
+  const dl = await getDownload(app.source, version, srcCtx());
+  if (version && dl.version !== version && app.source.type === 'fdroid')
+    throw Object.assign(new Error(`F-Droid doesn't offer version ${version}, which your patches need`), { attention: 'no-compatible-version' });
+  return dl;
 }
 
 export interface Plan {
@@ -109,10 +139,11 @@ export async function plan(appId: string, opts: { force: boolean; trigger: Plan[
 
   let available: string[] | null = null;
   try {
-    const si = await resolveSource(app.source, srcCtx());
-    available = si.versions;
-    ok(`Source offers ${available ? available.length + ' versions, latest ' + (si.latest || available[0]) : 'the latest version only'}`);
+    const sv = await sourceVersions(app);
+    available = sv.versions;
+    ok(`Source offers ${available ? available.length + ' versions, latest ' + (sv.latest || available[0]) : 'the latest version only'}`);
   } catch (e) {
+    if (app.source.type === 'apkpure') throw e;
     warn(`Could not list source versions: ${shortErr(e)}`);
   }
 
@@ -130,9 +161,7 @@ export async function plan(appId: string, opts: { force: boolean; trigger: Plan[
   if (t.conflict) throw Object.assign(new Error(t.reason), { attention: 'no-compatible-version' });
   log(`Target version: ${t.target ?? 'latest'} — ${t.reason}`);
 
-  const dl = await getDownload(app.source, t.target, srcCtx());
-  if (t.target && dl.version !== t.target && (app.source.type === 'apkpure' || app.source.type === 'fdroid'))
-    throw Object.assign(new Error(`${app.source.type === 'apkpure' ? 'APKPure' : 'F-Droid'} doesn't offer version ${t.target}, which your patches need`), { attention: 'no-compatible-version' });
+  const dl = await sourceDownload(app, t.target);
   const version = dl.version || t.target;
   const same =
     state.current &&
@@ -212,10 +241,15 @@ export async function fetchApk(appId: string) {
   const app = getApp(cfg, appId);
   if (!p.download) throw new Error('Nothing to download');
   const raw = `${WORK}/download.bin`;
-  info(`Fetching ${app.name} ${p.version ?? ''} from ${new URL(p.download.url).host}`);
-  const headers: Record<string, string> = {};
-  if (app.source.type === 'upload' || p.download.url.includes(`github.com/${REPO}/`)) headers.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
-  const res = await download(p.download.url, raw, headers);
+  if (p.download.url.startsWith('apkeep:')) {
+    const [pkg, ver] = p.download.url.slice(7).split('@');
+    renameSync(await apkeepDownload(pkg, ver), raw);
+  } else {
+    info(`Fetching ${app.name} ${p.version ?? ''} from ${new URL(p.download.url).host}`);
+    const headers: Record<string, string> = {};
+    if (app.source.type === 'upload' || p.download.url.includes(`github.com/${REPO}/`)) headers.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
+    await download(p.download.url, raw, headers);
+  }
   const names = zipEntries(raw);
   const looksApk = names.includes('AndroidManifest.xml');
   const isBundle = !looksApk && names.some((n) => /\.apk$/i.test(n));
