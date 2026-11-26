@@ -145,7 +145,7 @@
       <div class="grow">
         <b>{st.attention.kind === 'build-failed' ? 'The last update failed to build' : st.attention.kind === 'selection-changed' ? 'Your patch selection needs a review' : 'No compatible version'}</b>
         <div>{st.attention.message}</div>
-        {#if st.attention.details?.length}<div class="mono small det">{st.attention.details.join(' · ')}</div>{/if}
+        {#if st.attention.details?.length && st.attention.details.join(' ') !== st.attention.message}<div class="mono small det">{st.attention.details.join(' · ')}</div>{/if}
       </div>
       <div class="att-acts">
         {#if st.attention.kind === 'build-failed'}<button class="btn sm light" onclick={rebuild}>Try again</button>{:else}<a class="btn sm light" href="/apps/{id}/edit/patches">Review patches</a>{/if}
@@ -203,7 +203,7 @@
               <button class="btn sm outlined" onclick={() => copy(recipeLink(), 'Recipe link copied')}><Icon name="share" size={18} /> Share recipe</button>
             </div>
           </section>
-          <section class="card pad danger">
+          <section class="card pad danger-card">
             <h3 class="section-title"><Icon name="delete" /> Remove</h3>
             <p class="muted small">Removes the app from Relevance, your F-Droid repository and store site.</p>
             <button class="btn danger sm" onclick={() => (delOpen = true)}>Delete app</button>
@@ -428,7 +428,7 @@
   .toggle {
     font-weight: 600;
   }
-  .danger {
+  .danger-card {
     background: color-mix(in srgb, var(--error-c) 45%, var(--surface));
   }
   .table {

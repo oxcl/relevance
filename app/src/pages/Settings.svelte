@@ -203,7 +203,7 @@
       </div>
     </section>
 
-    <section class="card pad danger">
+    <section class="card pad danger-card">
       <h2 class="section-title"><Icon name="warning" /> Danger zone</h2>
       <p class="muted small sub">Irreversible actions.</p>
       <button class="btn danger" onclick={() => (deleteOpen = true)} use:ripple><Icon name="delete" /> Delete account</button>
@@ -350,10 +350,10 @@
     background: var(--surface);
     box-shadow: var(--shadow-1);
   }
-  .danger {
+  .danger-card {
     background: linear-gradient(160deg, var(--error-c), color-mix(in srgb, var(--error-c) 40%, var(--surface)));
   }
-  .danger .section-title :global(svg) {
+  .danger-card .section-title :global(svg) {
     color: var(--error);
   }
   .or {

@@ -89,6 +89,7 @@
     customOpen = true;
   }
   const visibleSpecific = $derived(specific.filter(match));
+  const missing = $derived(index && !isModules ? app.patches.filter((p) => !all.some((d) => d.name === p.name)) : []);
   const count = $derived(app.patches.length + app.customPatches.filter((c) => c.enabled).length);
   const base = router.route.name === 'edit' ? `/apps/${router.route.params.id}/edit` : '/add';
 </script>
@@ -111,6 +112,17 @@
         <button class="btn text sm" onclick={() => (app.patches = [])}>None</button>
       {/if}
     </div>
+    {#if missing.length}
+      <div class="notice error missing" transition:slide>
+        <Icon name="warning" />
+        <div class="grow">
+          <b>No longer offered by {index?.name} {index?.version}</b>
+          {#each missing as m (m.name)}
+            <div class="mrow"><span>{m.name}</span><button class="btn sm soft" onclick={() => (app.patches = app.patches.filter((x) => x.name !== m.name))}>Remove</button></div>
+          {/each}
+        </div>
+      </div>
+    {/if}
     <div class="card list">
       {#if loading}
         {#each Array(5) as _}<div class="prow"><span class="skel" style="width:52px;height:30px;border-radius:99px"></span><span class="skel" style="height:34px;flex:1"></span></div>{/each}
@@ -244,9 +256,23 @@
   {/snippet}
 </Dialog>
 
-<StepNav {go} canNext={!target.conflict} />
+<StepNav {go} canNext={!target.conflict && !missing.length} />
 
 <style>
+  .missing {
+    margin-bottom: 12px;
+  }
+  .missing .grow {
+    flex: 1;
+    display: grid;
+    gap: 6px;
+  }
+  .mrow {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 10px;
+  }
   .change {
     display: inline-flex;
     align-items: center;
