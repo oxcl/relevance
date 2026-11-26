@@ -236,15 +236,26 @@ export function apkpurePage(url: string): { pkg: string; page: string } {
   if (!pkg) throw new Error('Could not find a package name in the APKPure URL');
   const idx = parts.indexOf(pkg);
   const slug = parts[idx - 1] || 'app';
-  return { pkg, page: `https://apkpure.com/${slug}/${pkg}` };
+  return { pkg, page: `https://apkpure.net/${slug}/${pkg}` };
 }
 
 async function apkpureVersions(ctx: Ctx, page: string): Promise<string[]> {
   const r = await ctx.fetch(`${page}/versions`, { headers: ua(ctx), redirect: 'follow' });
   if (!r.ok) throw new Error(`versions ${r.status}`);
   const html = await r.text();
-  const v = [...html.matchAll(/data-dt-version="([^"]+)"/g)].map((m) => m[1]).filter((x) => !/SECONDARY/i.test(x));
+  const v = [
+    ...[...html.matchAll(/\/download\/([^"/?#]+)"/g)].map((m) => decodeURIComponent(m[1])),
+    ...[...html.matchAll(/data-dt-version="([^"]+)"/g)].map((m) => m[1]),
+  ].filter((x) => !/SECONDARY/i.test(x) && /\d/.test(x));
   return sortVersionsDesc(v);
+}
+
+async function apkpureVersionUrl(ctx: Ctx, page: string, version: string): Promise<string | null> {
+  const r = await ctx.fetch(`${page}/download/${encodeURIComponent(version)}`, { headers: ua(ctx), redirect: 'follow' });
+  if (!r.ok) return null;
+  const html = await r.text();
+  const m = html.match(/https:\/\/d\.apkpure\.(?:net|com)\/b\/(?:APK|XAPK)\/[^"'\s]+versionCode=\d+/);
+  return m ? decodeHtml(m[0]) : null;
 }
 
 /** Map a version to a concrete download. */
@@ -277,9 +288,12 @@ export async function getDownload(src: AppSource, version: string | null, ctx: C
       };
     }
     case 'apkpure': {
-      const { pkg } = apkpurePage(src.url);
-      const q = version ? `version=${encodeURIComponent(version)}` : 'version=latest';
-      return { url: `https://d.apkpure.com/b/APK/${pkg}?${q}`, version: version || undefined, fileName: `${pkg}.apk` };
+      const { pkg, page } = apkpurePage(src.url);
+      if (version) {
+        const url = await apkpureVersionUrl(ctx, page, version).catch(() => null);
+        if (url) return { url, version, fileName: `${pkg}.apk` };
+      }
+      return { url: `https://d.apkpure.net/b/APK/${pkg}?version=latest`, version: undefined, fileName: `${pkg}.apk` };
     }
     case 'url':
     case 'upload':
