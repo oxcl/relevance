@@ -29,6 +29,7 @@ jobs:
           distribution: temurin
           java-version: '21'
       - uses: oven-sh/setup-bun@v2
+      - run: bun install --frozen-lockfile
       - name: Build engine
         run: bun build engine/main.ts --target node --format esm --outfile engine.mjs
       - uses: actions/setup-node@v4
