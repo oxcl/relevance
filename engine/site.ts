@@ -78,7 +78,13 @@ export async function buildSite() {
     }
     const warnText =
       cfg.settings.notifications?.fdroid && st.attention
-        ? `<p><b>⚠ ${esc(st.attention.kind === 'build-failed' ? 'An update is available but the build is failing — check it out in Relevance.' : 'An update changed what you picked — review it in Relevance.')}</b></p>`
+        ? `<p><b>⚠ ${esc(
+            st.attention.kind === 'build-failed'
+              ? 'An update is available but the build is failing — check it out in Relevance.'
+              : st.attention.kind === 'signature-changed'
+                ? "An update was held back: the downloaded app isn't signed by its usual developer key."
+                : 'An update changed what you picked — review it in Relevance.',
+          )}</b></p>`
         : '';
     const desc = warnText + htmlToFdroid(app.listing?.description || `<p>${esc(app.listing?.summary || app.name)}</p>`);
     const patches = st.current?.patches?.length ? `<p><b>Patches applied</b></p><ul>${st.current.patches.map((p) => `<li>${esc(p)}</li>`).join('')}</ul>` : '';
@@ -279,7 +285,13 @@ function appPage(
     .join('');
   const warning =
     cfg.settings.notifications?.fdroid && st.attention
-      ? `<div class="notice">${ICON.warn}<span>${esc(st.attention.kind === 'build-failed' ? 'An update is available but the build is currently failing. The version below is the last good build.' : 'An update changed the patch selection; the owner is reviewing it.')}</span></div>`
+      ? `<div class="notice">${ICON.warn}<span>${esc(
+          st.attention.kind === 'build-failed'
+            ? 'An update is available but the build is currently failing. The version below is the last good build.'
+            : st.attention.kind === 'signature-changed'
+              ? "An update was held back because the downloaded app isn't signed by its usual developer key. The version below is the last good build."
+              : 'An update changed the patch selection; the owner is reviewing it.',
+        )}</span></div>`
       : '';
   const body = `<main class="wrap">
 <section class="app-hero">

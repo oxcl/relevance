@@ -21,6 +21,24 @@
   let delReleases = $state(false);
   let busy = $state('');
   let editMenu = $state(false);
+  let trustOpen = $state(false);
+  const shortCert = (c?: string) => (c ? c.slice(0, 16).toUpperCase().replace(/(.{4})/g, '$1 ').trim() + '…' : '—');
+  async function trustNewSignature() {
+    busy = 'trust';
+    try {
+      const path = `.relevance/state/${id}.json`;
+      const s = { ...$state.snapshot(st), sourceCert: null, attention: null, status: st.current ? 'ok' : 'never' };
+      await gh().commit(session.repo!, [{ path, content: JSON.stringify(s, null, 2) + '\n' }], `relevance: trust a new signing key for ${id}`);
+      data.states[id] = s as any;
+      trustOpen = false;
+      const run = await startBuild(id, true);
+      toast('The next download will be pinned as the new original signature', 'success');
+      if (run) navigate(`/builds/${run.id}`);
+    } catch (e) {
+      errorToast(e);
+    }
+    busy = '';
+  }
   const toolName: Record<string, string> = { revanced: 'ReVanced', morphe: 'Morphe', lspatch: 'LSPatch', none: 'No patching' };
   const runs = $derived(data.runs.filter((r) => r.appId === id));
   const running = $derived(runs.find((r) => r.status !== 'completed'));
@@ -143,12 +161,14 @@
     <div class="att" transition:slide>
       <Icon name="warning" fill size={26} />
       <div class="grow">
-        <b>{st.attention.kind === 'build-failed' ? 'The last update failed to build' : st.attention.kind === 'selection-changed' ? 'Your patch selection needs a review' : 'No compatible version'}</b>
+        <b>{st.attention.kind === 'build-failed' ? 'The last update failed to build' : st.attention.kind === 'selection-changed' ? 'Your patch selection needs a review' : st.attention.kind === 'signature-changed' ? "The original app isn't signed by its usual developer key" : 'No compatible version'}</b>
         <div>{st.attention.message}</div>
         {#if st.attention.details?.length && st.attention.details.join(' ') !== st.attention.message}<div class="mono small det">{st.attention.details.join(' · ')}</div>{/if}
       </div>
       <div class="att-acts">
-        {#if st.attention.kind === 'build-failed'}<button class="btn sm light" onclick={rebuild}>Try again</button>{:else}<a class="btn sm light" href="/apps/{id}/edit/patches">Review patches</a>{/if}
+        {#if st.attention.kind === 'build-failed'}<button class="btn sm light" onclick={rebuild}>Try again</button>
+        {:else if st.attention.kind === 'signature-changed'}<button class="btn sm light" onclick={() => (trustOpen = true)}>Trust new signature</button>
+        {:else}<a class="btn sm light" href="/apps/{id}/edit/patches">Review patches</a>{/if}
         {#if st.history[0]?.runId}<a class="btn sm ghost" href="/builds/{st.history[0].runId}">Log</a>{/if}
         <button class="btn sm ghost" onclick={dismissAttention}>Dismiss</button>
       </div>
@@ -188,6 +208,7 @@
               <dt>Latest at source</dt><dd class="mono">{st.latestAvailable || '—'}</dd>
               <dt>Target</dt><dd class="mono">{app.pin ? `${app.pin} (pinned)` : st.targetVersion || '—'}</dd>
               <dt>Last checked</dt><dd>{timeAgo(st.checkedAt)}</dd>
+              <dt>Original signature</dt><dd class="mono" title={st.sourceCert?.sha256.join('\n')}>{st.sourceCert ? `${shortCert(st.sourceCert.sha256[0])} · pinned ${new Date(st.sourceCert.firstSeen).toLocaleDateString()}` : 'pinned on the first build'}</dd>
             </dl>
             <div class="row toggle">
               <Switch checked={app.enabled} onchange={setEnabled} label="Automatic builds" />
@@ -247,6 +268,16 @@
       {/if}
     </div>
   {/key}
+
+  <Dialog bind:open={trustOpen} title="Trust a new signing key?" icon="key">
+    <p>The last download of {displayName(app)} was signed by a different key than the original you pinned. That happens when a developer rotates keys, but it's also exactly what a modified or malicious copy looks like.</p>
+    <p>Only continue if you've confirmed the change is genuine, for example from the developer's announcement or another trusted source. The next download will be pinned as the new original.</p>
+    {#if st.attention?.message}<div class="notice small"><span class="mono">{st.attention.message}</span></div>{/if}
+    {#snippet actions()}
+      <button class="btn soft" onclick={() => (trustOpen = false)}>Cancel</button>
+      <button class="btn terra" disabled={busy === 'trust'} onclick={trustNewSignature}>{busy === 'trust' ? 'Saving…' : 'Trust and rebuild'}</button>
+    {/snippet}
+  </Dialog>
 
   <Dialog bind:open={delOpen} title="Delete {displayName(app)}?" icon="delete">
     <p>This removes the app from Relevance and, on the next publish, from your F-Droid repository and store site. People who installed it keep their copy.</p>

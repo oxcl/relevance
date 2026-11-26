@@ -7,7 +7,13 @@ export async function notify(cfg: RelevanceConfig, app: AppConfig, st: AppState)
   if (!att) return;
   const runUrl = `https://github.com/${REPO}/actions/runs/${RUN_ID}`;
   const appUrl = `${cfg.settings.relevanceUrl}/apps/${app.id}`;
-  const title = `${app.customize?.name || app.name}: ${att.kind === 'build-failed' ? 'update build failed' : 'your patch selection needs a review'}`;
+  const what: Record<string, string> = {
+    'build-failed': 'update build failed',
+    'selection-changed': 'your patch selection needs a review',
+    'no-compatible-version': 'no compatible version available',
+    'signature-changed': "the original app's signature doesn't match",
+  };
+  const title = `${app.customize?.name || app.name}: ${what[att.kind] || 'needs attention'}`;
   const body = [
     att.message,
     '',

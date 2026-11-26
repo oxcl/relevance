@@ -73,6 +73,66 @@ export async function sourceDownload(app: AppConfig, version: string | null): Pr
   return dl;
 }
 
+function expectedSignatures(index: PatchIndex | null, pkg: string): string[] | undefined {
+  const sigs = new Set<string>();
+  for (const p of index?.patches || []) for (const c of p.packages || []) if (c.packageName === pkg) for (const s of c.signatures || []) sigs.add(s);
+  return sigs.size ? [...sigs] : undefined;
+}
+
+/** Verify an APK's signature and return its signer certificate SHA-256 digests. */
+export async function apkCerts(file: string): Promise<string[]> {
+  let out: string;
+  try {
+    out = await run(join(buildTools(), 'apksigner'), ['verify', '--print-certs', file], { quiet: true });
+  } catch {
+    throw new Error(`${file.split('/').pop()} has a missing or invalid signature — the download may be corrupt or modified`);
+  }
+  const certs = [...new Set([...out.matchAll(/certificate SHA-256 digest: ([0-9a-f]{64})/gi)].map((m) => m[1].toLowerCase()))];
+  if (!certs.length) throw new Error(`Couldn't read the signing certificate of ${file.split('/').pop()}`);
+  return certs;
+}
+
+const short = (c: string) => c.slice(0, 16).replace(/(.{4})/g, '$1 ').trim() + '…';
+
+/**
+ * Make sure the original app comes from its real developer: the signature must be valid, match the
+ * certificates published by the patch maintainers (when they publish them), and match the certificate
+ * pinned on the first build.
+ */
+async function checkOriginal(app: AppConfig, p: Plan, certs: string[]) {
+  const st = loadState(app.id);
+  info(`Original signature: ${certs.map(short).join(', ')}`);
+  const overlap = (a: string[], b: string[]) => a.some((x) => b.includes(x));
+  if (p.expectedSignatures?.length) {
+    if (!overlap(certs, p.expectedSignatures))
+      throw Object.assign(
+        new Error(
+          `The downloaded ${app.name} is not signed by its developer: its certificate (${short(certs[0])}) doesn't match the one ${p.expectedFrom} publishes for this app. The file may have been modified by the source.`,
+        ),
+        { attention: 'signature-changed' },
+      );
+    ok(`Signature matches the one published by ${p.expectedFrom}`);
+  }
+  const pinned = st.sourceCert?.sha256;
+  if (pinned?.length) {
+    if (!overlap(certs, pinned))
+      throw Object.assign(
+        new Error(
+          `${app.name} ${p.version ?? ''} is signed by a different key (${short(certs[0])}) than the one pinned on ${st.sourceCert!.firstSeen.slice(0, 10)} (${short(pinned[0])}). The download may have been tampered with. If the developer really changed keys, choose "Trust new signature" in Relevance.`.replace('  ', ' '),
+        ),
+        { attention: 'signature-changed' },
+      );
+    ok('Signature matches the pinned original');
+  } else {
+    await updateState(
+      app.id,
+      (s) => (s.sourceCert = { sha256: certs, firstSeen: new Date().toISOString(), version: p.version || undefined }),
+      `relevance: pin original signature of ${app.name}`,
+    );
+    ok('Pinned the original signature — future downloads must match it');
+  }
+}
+
 export interface Plan {
   appId: string;
   version: string | null;
@@ -80,6 +140,9 @@ export interface Plan {
   download?: { url: string; fileName: string; version?: string };
   configHash: string;
   patchVersion?: string;
+  /** original signing certificates published by the patch maintainers for this app */
+  expectedSignatures?: string[];
+  expectedFrom?: string;
   skip?: boolean;
   rebuild: boolean;
   trigger: 'manual' | 'schedule' | 'config';
@@ -176,6 +239,8 @@ export async function plan(appId: string, opts: { force: boolean; trigger: Plan[
     download: { url: dl.url, fileName: dl.fileName, version: dl.version },
     configHash: hash,
     patchVersion: index?.version,
+    expectedSignatures: expectedSignatures(index, app.packageName),
+    expectedFrom: index ? `${index.name} ${index.version}` : undefined,
     skip: Boolean(same && !opts.force),
     rebuild: needsRebuild(app),
     trigger: opts.trigger,
@@ -254,13 +319,30 @@ export async function fetchApk(appId: string) {
   const looksApk = names.includes('AndroidManifest.xml');
   const isBundle = !looksApk && names.some((n) => /\.apk$/i.test(n));
   const input = `${WORK}/input.apk`;
+  let certs: string[];
   if (looksApk) {
     renameSync(raw, input);
+    certs = await apkCerts(input);
   } else if (isBundle) {
-    info('Split APK bundle detected — merging into a single APK with APKEditor');
-    const ed = await fetchCli('apkeditor');
     const bundle = `${WORK}/bundle.xapk`;
     renameSync(raw, bundle);
+    // verify every split before merging (the merged APK is unsigned)
+    const splits = `${WORK}/splits`;
+    rmSync(splits, { recursive: true, force: true });
+    mkdirSync(splits, { recursive: true });
+    await run(
+      'python3',
+      ['-c', 'import zipfile,sys\nz=zipfile.ZipFile(sys.argv[1])\nfor n in z.namelist():\n  if n.endswith(".apk"): z.extract(n, sys.argv[2])', bundle, splits],
+      { quiet: true },
+    );
+    const files = readdirSync(splits, { recursive: true }).map(String).filter((f) => f.endsWith('.apk'));
+    if (!files.length) throw new Error('The bundle contains no APKs');
+    const sets = await Promise.all(files.map((f) => apkCerts(join(splits, f))));
+    certs = sets[0];
+    if (sets.some((c) => !c.some((x) => certs.includes(x)))) throw new Error('The split APKs in this bundle are signed by different keys — refusing to use it');
+    ok(`All ${files.length} split APKs carry valid signatures from the same key`);
+    info('Split APK bundle detected — merging into a single APK with APKEditor');
+    const ed = await fetchCli('apkeditor');
     await run('java', ['-jar', ed, 'm', '-i', bundle, '-o', input, '-f']);
   } else {
     throw new Error('The downloaded file is not an APK');
@@ -273,6 +355,7 @@ export async function fetchApk(appId: string) {
     if (app.source.type !== 'upload') log(`Note: release ${p.version} contains app version ${meta.versionName}`);
   }
   if (meta.packageName !== app.packageName) warn(`Package name ${meta.packageName} differs from the configured ${app.packageName}`);
+  await checkOriginal(app, p, certs);
   writeJson(`${WORK}/input.json`, meta);
   copyFileSync(input, `${WORK}/current.apk`);
   if (isBundle && !p.rebuild) {

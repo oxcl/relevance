@@ -31,6 +31,8 @@ export interface PatchCompat {
   packageName: string;
   /** null or empty = any version */
   versions: string[] | null;
+  /** SHA-256 digests of the original app's signing certificates, when the patch maintainers publish them */
+  signatures?: string[];
 }
 
 export interface PatchDef {
@@ -209,7 +211,7 @@ export interface BuildEntry {
 }
 
 export interface Attention {
-  kind: 'build-failed' | 'selection-changed' | 'no-compatible-version';
+  kind: 'build-failed' | 'selection-changed' | 'no-compatible-version' | 'signature-changed';
   message: string;
   at: string;
   version?: string;
@@ -239,6 +241,8 @@ export interface AppState {
   targetVersion?: string;
   checkedAt?: string;
   sourceMeta?: SourceMeta;
+  /** Signing certificate(s) of the original app, pinned on the first build */
+  sourceCert?: { sha256: string[]; firstSeen: string; version?: string } | null;
 }
 
 export interface Recipe {
@@ -260,4 +264,4 @@ export interface StepDef {
   subtitle: string;
 }
 
-export const ENGINE_VERSION = '1.2.0';
+export const ENGINE_VERSION = '1.3.0';
