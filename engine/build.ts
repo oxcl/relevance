@@ -162,11 +162,38 @@ export async function plan(appId: string, opts: { force: boolean; trigger: Plan[
 
 // ------------------------------------------------------------------ fetch
 
-function isZipWith(file: string, name: RegExp): boolean {
-  // light check: look for the entry name in the zip central directory
+/** Names of the entries in a zip's central directory (outer level only). */
+export function zipEntries(file: string): string[] {
   const buf = readFileSync(file);
-  const tail = buf.subarray(Math.max(0, buf.length - 4 * 1024 * 1024)).toString('latin1');
-  return name.test(tail);
+  let eocd = -1;
+  for (let i = buf.length - 22; i >= Math.max(0, buf.length - 66000); i--) {
+    if (buf.readUInt32LE(i) === 0x06054b50) {
+      eocd = i;
+      break;
+    }
+  }
+  if (eocd < 0) return [];
+  let cdSize = buf.readUInt32LE(eocd + 12);
+  let cdOff = buf.readUInt32LE(eocd + 16);
+  if (cdOff === 0xffffffff) {
+    // zip64
+    const loc = eocd - 20;
+    if (buf.readUInt32LE(loc) === 0x07064b50) {
+      const z64 = Number(buf.readBigUInt64LE(loc + 8));
+      cdSize = Number(buf.readBigUInt64LE(z64 + 40));
+      cdOff = Number(buf.readBigUInt64LE(z64 + 48));
+    }
+  }
+  const names: string[] = [];
+  let p = cdOff;
+  while (p < cdOff + cdSize && buf.readUInt32LE(p) === 0x02014b50) {
+    const n = buf.readUInt16LE(p + 28);
+    const e = buf.readUInt16LE(p + 30);
+    const c = buf.readUInt16LE(p + 32);
+    names.push(buf.toString('utf8', p + 46, p + 46 + n));
+    p += 46 + n + e + c;
+  }
+  return names;
 }
 
 export async function fetchApk(appId: string) {
@@ -179,15 +206,16 @@ export async function fetchApk(appId: string) {
   const headers: Record<string, string> = {};
   if (app.source.type === 'upload' || p.download.url.includes(`github.com/${REPO}/`)) headers.Authorization = `Bearer ${env.GITHUB_TOKEN}`;
   const res = await download(p.download.url, raw, headers);
-  const isBundle = /xapk|apkm|apks/i.test(res.finalUrl) || isZipWith(raw, /manifest\.json|\.apk[^\w]|split_config|base\.apk/);
-  const looksApk = isZipWith(raw, /AndroidManifest\.xml/) && isZipWith(raw, /classes\.dex|resources\.arsc/);
+  const names = zipEntries(raw);
+  const looksApk = names.includes('AndroidManifest.xml');
+  const isBundle = !looksApk && names.some((n) => /\.apk$/i.test(n));
   const input = `${WORK}/input.apk`;
-  if (looksApk && !/base\.apk/.test(readFileSync(raw).subarray(-2 * 1024 * 1024).toString('latin1'))) {
+  if (looksApk) {
     renameSync(raw, input);
   } else if (isBundle) {
     info('Split APK bundle detected — merging into a single APK with APKEditor');
     const ed = await fetchCli('apkeditor');
-    const bundle = `${WORK}/bundle.zip`;
+    const bundle = `${WORK}/bundle.xapk`;
     renameSync(raw, bundle);
     await run('java', ['-jar', ed, 'm', '-i', bundle, '-o', input, '-f']);
   } else {
@@ -198,6 +226,10 @@ export async function fetchApk(appId: string) {
   if (meta.packageName !== app.packageName) warn(`Package name ${meta.packageName} differs from the configured ${app.packageName}`);
   writeJson(`${WORK}/input.json`, meta);
   copyFileSync(input, `${WORK}/current.apk`);
+  if (isBundle && !p.rebuild) {
+    info('A merged bundle has no valid signature — signing it with your key');
+    await sign(appId);
+  }
 }
 
 // ------------------------------------------------------------------ patch
