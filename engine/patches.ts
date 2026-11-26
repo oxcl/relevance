@@ -179,7 +179,7 @@ export async function indexSource(src: PatchSource): Promise<PatchIndex> {
   const cli = await fetchCli(src.tool);
   const args =
     src.tool === 'revanced'
-      ? ['-jar', cli, 'list-patches', '--index', '--descriptions', '--packages', '--versions', '--options', '--universal-patches', '-p', file, '-b']
+      ? ['-jar', cli, 'list-patches', '--index', '--packages', '--versions', '--options', '--universal-patches', '-p', file, '-b']
       : ['-jar', cli, 'list-patches', '-i', '-d', '-p', '-v', '-o', '-u', '--patches', file];
   const out = await run('java', args, { quiet: false });
   const patches = parseListPatches(out);
@@ -188,18 +188,42 @@ export async function indexSource(src: PatchSource): Promise<PatchIndex> {
 }
 
 async function indexLsposed(): Promise<PatchDef[]> {
-  const r = await fetch('https://modules.lsposed.org/modules.json', { headers: { 'User-Agent': 'Relevance-Indexer' } });
-  if (!r.ok) throw new Error(`modules.lsposed.org responded ${r.status}`);
-  const mods: any[] = await r.json();
-  return mods
-    .filter((m) => !m.hide && m.latestRelease)
-    .map((m) => ({
-      name: m.description || m.name,
-      description: m.summary || null,
-      default: false,
-      packages: Array.isArray(m.scope) && m.scope.length ? m.scope.map((s: string) => ({ packageName: s, versions: null })) : null,
-      module: { repo: `Xposed-Modules-Repo/${m.name}`, summary: m.summary || undefined },
-    }));
+  let mods: any[] | null = null;
+  for (const url of ['https://modules.lsposed.org/modules.json', 'https://modules.lsposed.org/modules.json?']) {
+    try {
+      const r = await fetch(url);
+      if (r.ok) {
+        mods = await r.json();
+        break;
+      }
+      log(`! ${url} responded ${r.status}`);
+    } catch {}
+  }
+  if (mods) {
+    return mods
+      .filter((m) => !m.hide && m.latestRelease)
+      .map((m) => ({
+        name: m.description || m.name,
+        description: m.summary || null,
+        default: false,
+        packages: Array.isArray(m.scope) && m.scope.length ? m.scope.map((s: string) => ({ packageName: s, versions: null })) : [],
+        module: { repo: `Xposed-Modules-Repo/${m.name}`, summary: m.summary || undefined },
+      }));
+  }
+  // Fallback: list the module repositories directly. Scope is unknown, so modules are matched by
+  // the package names mentioned in their summary.
+  log('Falling back to the Xposed-Modules-Repo GitHub organization');
+  const out: PatchDef[] = [];
+  for (let page = 1; page <= 25; page++) {
+    const repos: any[] = await ghApi(`/orgs/Xposed-Modules-Repo/repos?per_page=100&page=${page}`);
+    for (const r of repos) {
+      if (r.archived || r.name === 'submission' || !r.description) continue;
+      const pkgs = [...new Set(((r.description || '') + ' ' + (r.homepage || '')).match(/\b[a-z][\w]*(\.[a-z][\w]*){2,}\b/gi) || [])];
+      out.push({ name: r.description, description: null, default: false, packages: pkgs.map((p) => ({ packageName: p, versions: null })), module: { repo: r.full_name } });
+    }
+    if (repos.length < 100) break;
+  }
+  return out;
 }
 
 /** Load the normalized index for a patch source: builtin ones from Relevance's index branch, custom ones from the user repo. */
