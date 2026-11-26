@@ -260,4 +260,4 @@ export interface StepDef {
   subtitle: string;
 }
 
-export const ENGINE_VERSION = '1.0.9';
+export const ENGINE_VERSION = '1.1.0';

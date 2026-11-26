@@ -1,7 +1,7 @@
 // Relevance thin server: only glue that makes the static app work. It keeps no state of its own
 // (the relay holds recent log lines of running builds for a few hours, then deletes them).
 import { DurableObject } from 'cloudflare:workers';
-import { resolveSource } from '../shared/sources';
+import { resolveSource, apkpureCodes } from '../shared/sources';
 import type { AppSource } from '../shared/types';
 
 export interface Env {
@@ -180,6 +180,21 @@ export default {
         const info = await resolveSource(src, { fetch: (i: any, o?: any) => fetch(i, o), githubToken: bearer(req) || undefined });
         const res = json(info, 200, { 'Cache-Control': 'public, max-age=600' });
         if (!bearer(req)) ctx.waitUntil(cache.put(key, res.clone()));
+        return res;
+      }
+
+      // APKPure version codes (its pages challenge datacenter clients such as GitHub runners)
+      if (p === '/api/apkpure/codes') {
+        const page = url.searchParams.get('url') || '';
+        const version = url.searchParams.get('version') || undefined;
+        if (!/^https:\/\/(www\.)?apkpure\.(net|com)\//.test(page)) return err('Not an APKPure URL');
+        const cache = (caches as any).default as Cache;
+        const key = new Request(`https://cache.relevance/apkpure?${url.searchParams}`);
+        const hit = await cache.match(key);
+        if (hit) return hit;
+        const codes = await apkpureCodes({ fetch: (i: any, o?: any) => fetch(i, o) }, page, version);
+        const res = json({ codes }, 200, { 'Cache-Control': 'public, max-age=1800' });
+        if (Object.keys(codes).length) ctx.waitUntil(cache.put(key, res.clone()));
         return res;
       }
 

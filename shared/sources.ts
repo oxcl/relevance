@@ -25,6 +25,8 @@ export interface Ctx {
   fetch: typeof fetch;
   githubToken?: string;
   userAgent?: string;
+  /** Relevance server used when a store's web pages refuse datacenter clients (e.g. APKPure from GitHub runners) */
+  resolver?: string;
 }
 
 const PKG_RE = /^[a-zA-Z][\w]*(\.[a-zA-Z][\w]*)+$/;
@@ -176,8 +178,8 @@ export async function resolveSource(src: AppSource, ctx: Ctx): Promise<SourceInf
     case 'apkpure': {
       const { pkg, page } = apkpurePage(src.url);
       const res = await ctx.fetch(page, { headers: ua(ctx), redirect: 'follow' });
-      if (!res.ok) throw new Error(`APKPure responded ${res.status}`);
-      const html = await res.text();
+      if (!res.ok && !(res.status === 403 && ctx.resolver)) throw new Error(`APKPure responded ${res.status}`);
+      const html = res.ok ? await res.text() : '';
       let ld: any = null;
       for (const m of html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)) {
         try {
@@ -193,7 +195,7 @@ export async function resolveSource(src: AppSource, ctx: Ctx): Promise<SourceInf
       const shots = [...new Set([...html.matchAll(/(https:\/\/image[^"\s]*?winudf\.com\/v2\/image1\/[^"\s]*?screen[^"\s]*)/g)].map((m) => decodeHtml(m[1]).replace(/\?.*$/, '')))].slice(0, 8);
       let versions: string[] | null = null;
       try {
-        versions = await apkpureVersions(ctx, page);
+        versions = sortVersionsDesc(Object.keys(await apkpureCodes(ctx, src.url)));
       } catch {}
       return {
         packageName: pkg,
@@ -203,7 +205,7 @@ export async function resolveSource(src: AppSource, ctx: Ctx): Promise<SourceInf
         iconUrl: icon ? decodeHtml(icon) : undefined,
         screenshots: shots,
         website: page,
-        latest,
+        latest: versions?.[0] || latest,
         versions: versions && versions.length ? versions : latest ? [latest] : null,
         autoUpdates: true,
       };
@@ -239,23 +241,67 @@ export function apkpurePage(url: string): { pkg: string; page: string } {
   return { pkg, page: `https://apkpure.net/${slug}/${pkg}` };
 }
 
-async function apkpureVersions(ctx: Ctx, page: string): Promise<string[]> {
-  const r = await ctx.fetch(`${page}/versions`, { headers: ua(ctx), redirect: 'follow' });
-  if (!r.ok) throw new Error(`versions ${r.status}`);
-  const html = await r.text();
-  const v = [
-    ...[...html.matchAll(/\/download\/([^"/?#]+)"/g)].map((m) => decodeURIComponent(m[1])),
-    ...[...html.matchAll(/data-dt-version="([^"]+)"/g)].map((m) => m[1]),
-  ].filter((x) => !/SECONDARY/i.test(x) && /\d/.test(x));
-  return sortVersionsDesc(v);
+/** version name → APKPure version code, parsed from the app's version links. */
+export function parseApkpureCodes(html: string, pkg: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  const esc = pkg.replace(/\./g, '\\.');
+  const re = new RegExp(`<a\\b[^>]*href="[^"]*/${esc}/download/([^"/?#]+)"[^>]*data-dt-version-code="(\\d+)"`, 'g');
+  for (const m of html.matchAll(re)) out[decodeURIComponent(m[1])] = Number(m[2]);
+  // the current release is shown in a header block with version + versioncode attributes
+  for (const tag of html.match(/<[^>]*data-dt-versioncode="\d+"[^>]*>/g) || []) {
+    const v = tag.match(/data-dt-version="([^"]+)"/)?.[1];
+    const c = tag.match(/data-dt-versioncode="(\d+)"/)?.[1];
+    const p = tag.match(/data-dt-package(?:-?name)?="([^"]+)"/)?.[1];
+    if (v && c && !/SECONDARY/i.test(v) && (!p || p === pkg)) out[v] ??= Number(c);
+  }
+  return out;
 }
 
-async function apkpureVersionUrl(ctx: Ctx, page: string, version: string): Promise<string | null> {
-  const r = await ctx.fetch(`${page}/download/${encodeURIComponent(version)}`, { headers: ua(ctx), redirect: 'follow' });
-  if (!r.ok) return null;
-  const html = await r.text();
-  const m = html.match(/https:\/\/d\.apkpure\.(?:net|com)\/b\/(?:APK|XAPK)\/[^"'\s]+versionCode=\d+/);
-  return m ? decodeHtml(m[0]) : null;
+/**
+ * Version codes for an APKPure app (needed to download a specific version). Reads APKPure's pages
+ * directly; when they answer with a bot challenge (they do for GitHub's runners) it asks the
+ * Relevance server, which can read them, for the mapping. The file itself is always downloaded
+ * directly from d.apkpure.net, which serves every version to any client.
+ */
+export async function apkpureCodes(ctx: Ctx, url: string, version?: string | null): Promise<Record<string, number>> {
+  const { pkg, page } = apkpurePage(url);
+  let blocked = false;
+  const get = async (u: string) => {
+    for (let i = 0; ; i++) {
+      const r = await ctx.fetch(u, { headers: ua(ctx), redirect: 'follow' });
+      if (r.status !== 429 || i >= 2) return r;
+      await new Promise((res) => setTimeout(res, 2000 * (i + 1)));
+    }
+  };
+  const direct = async () => {
+    const r = await get(`${page}/versions`);
+    if (!r.ok) {
+      blocked = true;
+      throw new Error(`APKPure versions page responded ${r.status}`);
+    }
+    const codes = parseApkpureCodes(await r.text(), pkg);
+    if (version && !codes[version]) {
+      const d = await get(`${page}/download/${encodeURIComponent(version)}`);
+      if (d.ok) {
+        const html = await d.text();
+        const code = html.match(/d\.apkpure\.(?:net|com)\/b\/(?:APK|XAPK)\/[^"'\s]+?versionCode=(\d+)/)?.[1];
+        const shown = html.match(/data-dt-version="([^"]+)"/)?.[1];
+        if (code && (!shown || shown === version)) codes[version] = Number(code);
+      } else if (d.status !== 404) blocked = true;
+    }
+    return codes;
+  };
+  try {
+    const codes = await direct();
+    if (!version || codes[version] || !blocked || !ctx.resolver) return codes;
+  } catch (e) {
+    if (!blocked || !ctx.resolver) throw e;
+  }
+  const q = new URLSearchParams({ url: page, ...(version ? { version } : {}) });
+  const r = await ctx.fetch(`${ctx.resolver.replace(/\/$/, '')}/api/apkpure/codes?${q}`);
+  const j: any = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`Couldn't read APKPure versions (${j.error || r.status})`);
+  return j.codes || {};
 }
 
 /** Map a version to a concrete download. */
@@ -288,12 +334,12 @@ export async function getDownload(src: AppSource, version: string | null, ctx: C
       };
     }
     case 'apkpure': {
-      const { pkg, page } = apkpurePage(src.url);
-      if (version) {
-        const url = await apkpureVersionUrl(ctx, page, version).catch(() => null);
-        if (url) return { url, version, fileName: `${pkg}.apk` };
-      }
-      return { url: `https://d.apkpure.net/b/APK/${pkg}?version=latest`, version: undefined, fileName: `${pkg}.apk` };
+      const { pkg } = apkpurePage(src.url);
+      const codes = await apkpureCodes(ctx, src.url, version);
+      const want = version || sortVersionsDesc(Object.keys(codes))[0];
+      if (!want || !codes[want]) throw new Error(`APKPure has no download for ${pkg} ${version ?? '(no versions listed)'}`);
+      // the APK endpoint returns a plain APK when one exists and the split bundle (XAPK) otherwise
+      return { url: `https://d.apkpure.net/b/APK/${pkg}?versionCode=${codes[want]}`, version: want, versionCode: codes[want], fileName: `${pkg}.apk` };
     }
     case 'url':
     case 'upload':

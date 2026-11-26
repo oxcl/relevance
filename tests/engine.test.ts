@@ -71,3 +71,12 @@ test('manifest rewrite', () => {
   expect(rel).toContain('android:name="a.b.Main"');
   expect(rel).toContain('package="a.b.c"');
 });
+
+test('apkpure version codes', async () => {
+  const { parseApkpureCodes } = await import('../shared/sources');
+  const html = readFileSync(new URL('./fixtures/apkpure-versions.html', import.meta.url), 'utf8');
+  const codes = parseApkpureCodes(html, 'com.reddit.frontpage');
+  expect(codes['2026.46.0']).toBe(2646090); // current release (header block)
+  expect(codes['2026.40.0']).toBe(2640090); // version list
+  expect(codes['3.20.82']).toBeUndefined(); // APKPure's own app banner is ignored
+});

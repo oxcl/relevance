@@ -35,6 +35,14 @@ import {
 } from './util';
 import { notify } from './notify';
 
+export function srcCtx() {
+  let resolver = env.RELEVANCE_URL;
+  try {
+    resolver ||= loadConfig().settings.relevanceUrl;
+  } catch {}
+  return { fetch: (i: any, o?: any) => fetch(i, o), githubToken: env.GITHUB_TOKEN, resolver };
+}
+
 export interface Plan {
   appId: string;
   version: string | null;
@@ -101,7 +109,7 @@ export async function plan(appId: string, opts: { force: boolean; trigger: Plan[
 
   let available: string[] | null = null;
   try {
-    const si = await resolveSource(app.source, { fetch, githubToken: env.GITHUB_TOKEN });
+    const si = await resolveSource(app.source, srcCtx());
     available = si.versions;
     ok(`Source offers ${available ? available.length + ' versions, latest ' + (si.latest || available[0]) : 'the latest version only'}`);
   } catch (e) {
@@ -122,8 +130,9 @@ export async function plan(appId: string, opts: { force: boolean; trigger: Plan[
   if (t.conflict) throw Object.assign(new Error(t.reason), { attention: 'no-compatible-version' });
   log(`Target version: ${t.target ?? 'latest'} — ${t.reason}`);
 
-  const dl = await getDownload(app.source, t.target, { fetch, githubToken: env.GITHUB_TOKEN });
-  if (t.target && dl.version !== t.target && !app.pin) warn(`Couldn't find a download for ${t.target} at the source; using what it offers (${dl.version || 'latest'})`);
+  const dl = await getDownload(app.source, t.target, srcCtx());
+  if (t.target && dl.version !== t.target && (app.source.type === 'apkpure' || app.source.type === 'fdroid'))
+    throw Object.assign(new Error(`${app.source.type === 'apkpure' ? 'APKPure' : 'F-Droid'} doesn't offer version ${t.target}, which your patches need`), { attention: 'no-compatible-version' });
   const version = dl.version || t.target;
   const same =
     state.current &&
@@ -224,8 +233,11 @@ export async function fetchApk(appId: string) {
   }
   const meta = await apkInfo(input);
   ok(`${meta.packageName} ${meta.versionName} (${meta.versionCode}), ${(statSync(input).size / 1048576).toFixed(1)} MB`);
-  if (p.version && meta.versionName !== p.version && app.source.type !== 'upload')
-    warn(`The source delivered ${meta.versionName} instead of the target ${p.version}; patches may not fully support it`);
+  if (p.version && meta.versionName !== p.version) {
+    if (app.source.type === 'apkpure' || app.source.type === 'fdroid')
+      throw new Error(`The source delivered version ${meta.versionName}, but ${p.version} was requested`);
+    if (app.source.type !== 'upload') log(`Note: release ${p.version} contains app version ${meta.versionName}`);
+  }
   if (meta.packageName !== app.packageName) warn(`Package name ${meta.packageName} differs from the configured ${app.packageName}`);
   writeJson(`${WORK}/input.json`, meta);
   copyFileSync(input, `${WORK}/current.apk`);

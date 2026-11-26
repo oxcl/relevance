@@ -2,7 +2,7 @@ import { writeFileSync, mkdirSync } from 'node:fs';
 import type { PatchSource } from '../shared/types';
 import { configHash, findPatch, pickTarget } from '../shared/logic';
 import { resolveSource, sourceAutoUpdates, getDownload } from '../shared/sources';
-import { patchSourceFor } from './build';
+import { patchSourceFor, srcCtx } from './build';
 import { notify } from './notify';
 import { BUILTIN_SOURCES, indexSource, loadIndex } from './patches';
 import { env, ghApi, info, loadConfig, loadState, log, ok, putFile, REPO, shortErr, updateState, warn } from './util';
@@ -74,13 +74,13 @@ export async function checkUpdates(only?: string) {
       let latest: string | undefined;
       const auto = sourceAutoUpdates(app.source.type);
       if (auto) {
-        const si = await resolveSource(app.source, { fetch, githubToken: env.GITHUB_TOKEN });
+        const si = await resolveSource(app.source, srcCtx());
         available = si.versions;
         latest = si.latest || si.versions?.[0];
       }
       const t = pickTarget(app.tool === 'revanced' || app.tool === 'morphe' ? index : null, app.packageName, app.patches, available, app.pin);
       let target = t.target;
-      if (!target && auto) target = (await getDownload(app.source, null, { fetch, githubToken: env.GITHUB_TOKEN })).version || null;
+      if (!target && auto) target = (await getDownload(app.source, null, srcCtx())).version || null;
       const changed =
         !st.current ||
         st.configHash !== hash ||
