@@ -125,7 +125,7 @@ export function run(cmd: string, args: string[], opts: { cwd?: string; env?: Rec
         if (!opts.quiet) log(partial);
       }
       if (code !== 0 && opts.quiet) for (const l of out.split('\n').slice(-30)) log(l);
-      code === 0 ? resolve(out) : reject(new Error(`${cmd} exited with code ${code}`));
+      code === 0 ? resolve(out) : reject(Object.assign(new Error(`${cmd} exited with code ${code}`), { output: out }));
     });
   });
 }

@@ -485,6 +485,18 @@ export function rewriteManifest(xml: string, opts: { oldPkg: string; newPkg?: st
   return m;
 }
 
+// Resource folders whose qualifiers aapt2 rejects (e.g. values-mcc1001 in YouTube: country codes
+// have three digits, so these never match a real device and Android ignores them).
+export function invalidQualifierDirs(resDir: string): string[] {
+  if (!existsSync(resDir)) return [];
+  return readdirSync(resDir).filter((d) => d.split('-').slice(1).some((q) => /^(mcc|mnc)\d{4,}$/.test(q)));
+}
+function dropConfigs(resDir: string, dirs: string[]) {
+  if (!dirs.length) return;
+  for (const d of dirs) rmSync(join(resDir, d), { recursive: true, force: true });
+  warn(`Dropped ${dirs.length} resource folder${dirs.length === 1 ? '' : 's'} for configurations no device can have (${dirs.slice(0, 4).join(', ')}${dirs.length > 4 ? ', …' : ''})`);
+}
+
 export async function customize(appId: string) {
   const cfg = loadConfig();
   const app = getApp(cfg, appId);
@@ -540,7 +552,17 @@ export async function customize(appId: string) {
     ok(`Package name ${curPkg} → ${c.packageName}`);
   }
   info('Rebuilding APK');
-  await run('java', ['-jar', apktool, 'b', '-o', `${WORK}/customized.apk`, dec]);
+  dropConfigs(resDir, invalidQualifierDirs(resDir));
+  try {
+    await run('java', ['-jar', apktool, 'b', '-o', `${WORK}/customized.apk`, dec]);
+  } catch (e: any) {
+    // aapt2 names any other configuration it can't compile; those folders can never match a device
+    const bad = [...new Set([...String(e.output || '').matchAll(/res\/([^/\s]+)\/[^:\s]+: error: invalid configuration/g)].map((m) => m[1]))];
+    if (!bad.length) throw e;
+    dropConfigs(resDir, bad);
+    info('Rebuilding APK again');
+    await run('java', ['-jar', apktool, 'b', '-o', `${WORK}/customized.apk`, dec]);
+  }
   copyFileSync(`${WORK}/customized.apk`, `${WORK}/current.apk`);
   ok('Customized APK ready');
 }

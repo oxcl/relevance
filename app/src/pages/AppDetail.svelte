@@ -105,6 +105,7 @@
       errorToast(e);
     }
   }
+  let removed = $state(false);
   async function remove() {
     busy = 'delete';
     try {
@@ -113,19 +114,25 @@
         if (f.type === 'file') files.push({ path: f.path, content: null });
         else for (const g of await gh().listDir(session.repo!, f.path)) files.push({ path: g.path, content: null });
       }
+      removed = true;
       await saveConfig((c) => (c.apps = c.apps.filter((a) => a.id !== id)), `relevance: remove ${id}`, files);
-      if (delReleases) {
-        const rels: any[] = await gh().req(`/repos/${session.repo}/releases?per_page=100`, { etag: false });
-        for (const r of rels.filter((r) => r.tag_name.startsWith(`${id}-`) || r.tag_name.startsWith(`source-${id}-`))) {
-          await gh().req(`/repos/${session.repo}/releases/${r.id}`, { method: 'DELETE' });
-          await gh().req(`/repos/${session.repo}/git/refs/tags/${encodeURIComponent(r.tag_name)}`, { method: 'DELETE' }).catch(() => {});
-        }
-      }
       delete data.states[id];
-      await publishSite().catch(() => {});
-      toast('App removed — your store and F-Droid repo update in a few minutes', 'success');
+      // leave right away; release cleanup and the site refresh continue in the background
       navigate('/apps', { replace: true, back: true });
+      toast('App removed — your store and F-Droid repo update in a few minutes', 'success');
+      (async () => {
+        if (delReleases) {
+          const rels: any[] = await gh().req(`/repos/${session.repo}/releases?per_page=100`, { etag: false });
+          for (const r of rels.filter((r) => r.tag_name.startsWith(`${id}-`) || r.tag_name.startsWith(`source-${id}-`))) {
+            await gh().req(`/repos/${session.repo}/releases/${r.id}`, { method: 'DELETE' });
+            await gh().req(`/repos/${session.repo}/git/refs/tags/${encodeURIComponent(r.tag_name)}`, { method: 'DELETE' }).catch(() => {});
+          }
+        }
+        await publishSite().catch(() => {});
+      })().catch((e) => errorToast(e));
+      return;
     } catch (e) {
+      removed = false;
       errorToast(e);
     }
     busy = '';
@@ -141,7 +148,7 @@
 <svelte:window onclick={() => (editMenu = false)} />
 
 {#if !app}
-  {#if data.loaded}<NotFound />{/if}
+  {#if data.loaded && !removed}<NotFound />{/if}
 {:else}
   <a class="crumb" href="/apps" data-back><Icon name="arrow_back" size={20} /> Apps</a>
   <section class="head">

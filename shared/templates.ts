@@ -86,7 +86,7 @@ jobs:
   site:
     name: Publish F-Droid repo and store
     needs: build
-    if: always() && needs.build.outputs.skip != 'true'
+    if: needs.build.result == 'success' && needs.build.outputs.skip != 'true'
     uses: ./.github/workflows/relevance-publish.yml
     secrets: inherit
     permissions:
