@@ -470,6 +470,7 @@ export async function brandWithPatches(app: AppConfig, index: PatchIndex | null,
       s.options[appIconKey] = 'original';
       info('Custom branding: keeping the original app icon');
     }
+
   }
   if (brand && (chosen || canIcon || (c.name && nameKey && appIconKey))) {
     // pulled in only for the name: keep the app's own icon
@@ -494,6 +495,13 @@ export async function brandWithPatches(app: AppConfig, index: PatchIndex | null,
       if (appIconKey) s.options[appIconKey] = 'custom';
       done.icon = true;
     }
+  }
+  // whenever branding runs without a name of yours, keep the original one (Morphe would call it "<app> Morphe")
+  const branded = selected.find((x) => x.name === 'Custom branding');
+  const label = readJson<{ label?: string }>(`${WORK}/input.json`, {}).label;
+  if (brand && branded && nameKey && !branded.options[nameKey] && label) {
+    branded.options[nameKey] = label;
+    info(`Custom branding: keeping the original name "${label}"`);
   }
   const pkgPatch = c.packageName && c.packageName !== app.packageName ? findPatch(index, 'Change package name', app.packageName) : null;
   const pkgKey = pkgPatch?.options?.find((o) => /package/i.test(o.key))?.key;
