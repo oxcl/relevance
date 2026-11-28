@@ -11,7 +11,7 @@
   import { loadIndex, sourceFor, data } from '$lib/store.svelte';
   import { patchesForPackage, pickTarget, findPatch, sortVersionsDesc, versionsFor } from '$shared/logic';
   import type { PatchDef, PatchOptionDef, CustomPatch } from '$shared/types';
-  import { ripple } from '$lib/ui.svelte';
+  import { ripple, scrollArea } from '$lib/ui.svelte';
   import { navigate, router } from '$lib/router.svelte';
 
   let { go }: { go: (d: number) => void } = $props();
@@ -138,7 +138,7 @@
         </div>
       </div>
     {/if}
-    <div class="card list">
+    <div class="card list"><div class="scroll-area" use:scrollArea style="--scroll-max:min(64vh, 680px)">
       {#if loading}
         {#each Array(5) as _}<div class="prow"><span class="skel" style="width:52px;height:30px;border-radius:99px"></span><span class="skel" style="height:34px;flex:1"></span></div>{/each}
       {:else if !visibleSpecific.length}
@@ -157,14 +157,14 @@
           {/if}
         </div>
       {/each}
-    </div>
+    </div></div>
 
     {#if universal.length}
       <button class="uni-toggle" onclick={() => (showUniversal = !showUniversal)}>
         <Icon name={showUniversal ? 'keyboard_arrow_up' : 'keyboard_arrow_down'} /> Universal patches ({universal.length}) <span class="muted small">work with any app</span>
       </button>
       {#if showUniversal}
-        <div class="card list" transition:slide>
+        <div class="card list" transition:slide><div class="scroll-area" use:scrollArea style="--scroll-max:min(48vh, 460px)">
           {#each universal.filter(match) as p (p.name)}
             <div class="prow" class:on={isOn(p.name)}>
               <Switch checked={isOn(p.name)} label={p.name} onchange={(v) => toggle(p, v)} />
@@ -172,13 +172,13 @@
               {#if p.options?.length}<button class="icon-btn gear" aria-label="Options" onclick={() => openOptions(p)}><Icon name="settings" /></button>{/if}
             </div>
           {/each}
-        </div>
+        </div></div>
       {/if}
     {/if}
 
     <h2 class="section-title custom-h"><Icon name="extension" /> Custom extra {isModules ? 'modules' : 'patches'}</h2>
     {#if app.customPatches.length}
-      <div class="card list">
+      <div class="card list"><div class="scroll-area" use:scrollArea>
         {#each app.customPatches as c (c.id)}
           <div class="prow" class:on={c.enabled} transition:slide>
             <Switch bind:checked={c.enabled} label={c.name} />
@@ -187,7 +187,7 @@
             <button class="icon-btn" aria-label="Delete" onclick={() => (app.customPatches = app.customPatches.filter((x) => x.id !== c.id))}><Icon name="delete" /></button>
           </div>
         {/each}
-      </div>
+      </div></div>
     {/if}
     <button class="btn outlined add-custom" onclick={() => editCustom()} use:ripple><Icon name="add" /> Add custom {isModules ? 'module' : 'patch'}</button>
   </div>

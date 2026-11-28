@@ -11,7 +11,7 @@
   import { sourceLabel, sourceAutoUpdates } from '$shared/sources';
   import { missingCompanion, companionApp } from '$shared/companions';
   import { formatBytes, encodeRecipe, recipeFromApp } from '$shared/logic';
-  import { ripple, toast, errorToast, timeAgo, duration, copy } from '$lib/ui.svelte';
+  import { ripple, toast, errorToast, timeAgo, duration, copy, scrollArea } from '$lib/ui.svelte';
 
   const id = router.route.params.id;
   const app = $derived(data.config?.apps.find((a) => a.id === id));
@@ -221,11 +221,11 @@
       {#if tab === 'overview'}
         <div class="ov">
           <section class="card pad">
-            <h3 class="section-title"><Icon name="extension" /> {app.tool === 'lspatch' ? 'Modules' : 'Patches'}</h3>
+            <h3 class="section-title"><Icon name="extension" /> {app.tool === 'lspatch' ? 'Modules' : 'Patches'}{#if app.tool !== 'none' && app.patches.length + app.customPatches.filter((c) => c.enabled).length}<span class="count-pill mono">{app.patches.length + app.customPatches.filter((c) => c.enabled).length}</span>{/if}</h3>
             {#if app.tool === 'none'}
               <p class="muted">No patching tool. {app.customize.name || app.customize.icon || app.customize.packageName ? 'Basic modifications only.' : 'Published exactly as released, keeping the original signature.'}</p>
             {:else}
-              <ul class="checks">
+              <ul class="checks scroll-area" use:scrollArea style="--scroll-max:340px">
                 {#each app.patches as p}<li><Icon name="check_circle" fill size={18} />{p.name}{#if p.options && Object.keys(p.options).length}<span class="tag">options</span>{/if}</li>{/each}
                 {#each app.customPatches.filter((c) => c.enabled) as c}<li><Icon name="check_circle" fill size={18} />{c.name}<span class="tag terra">custom</span></li>{/each}
               </ul>

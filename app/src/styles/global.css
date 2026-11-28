@@ -775,3 +775,65 @@ h4 {
   scrollbar-width: thin;
   scrollbar-color: var(--outline-strong) transparent;
 }
+
+/* long lists scroll inside their section instead of stretching the page */
+@property --fade-top {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+@property --fade-bottom {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 0px;
+}
+.scroll-area {
+  max-height: var(--scroll-max, 380px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  --fade-top: 0px;
+  --fade-bottom: 0px;
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent 100%);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 var(--fade-top), #000 calc(100% - var(--fade-bottom)), transparent 100%);
+  transition:
+    --fade-top 0.35s var(--ease-out),
+    --fade-bottom 0.35s var(--ease-out);
+}
+.scroll-area.overflows {
+  padding-right: 6px;
+}
+.scroll-area.more-above {
+  --fade-top: 36px;
+}
+.scroll-area.more-below {
+  --fade-bottom: 44px;
+}
+.scroll-area::-webkit-scrollbar {
+  width: 8px;
+}
+.scroll-area::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 99px;
+  transition: background 0.3s;
+}
+.scroll-area:hover::-webkit-scrollbar-thumb {
+  background: var(--outline-strong);
+}
+.scroll-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.count-pill {
+  margin-left: 4px;
+  padding: 1px 9px;
+  border-radius: 99px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: var(--container);
+  color: var(--text-2);
+}

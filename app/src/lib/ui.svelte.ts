@@ -70,6 +70,40 @@ export function tilt(node: HTMLElement, strength = 5) {
   };
 }
 
+/**
+ * Scroll region for long lists: use:scrollArea (with class="scroll-area").
+ * Marks which edges still hide content so CSS can fade them, and whether it overflows at all.
+ */
+export function scrollArea(node: HTMLElement) {
+  let raf = 0;
+  const update = () => {
+    raf = 0;
+    const max = node.scrollHeight - node.clientHeight;
+    node.classList.toggle('overflows', max > 2);
+    node.classList.toggle('more-above', node.scrollTop > 2);
+    node.classList.toggle('more-below', node.scrollTop < max - 2);
+  };
+  const queue = () => (raf ||= requestAnimationFrame(update));
+  node.addEventListener('scroll', queue, { passive: true });
+  const ro = new ResizeObserver(queue);
+  ro.observe(node);
+  const mo = new MutationObserver(() => {
+    for (const c of node.children) ro.observe(c);
+    queue();
+  });
+  mo.observe(node, { childList: true, subtree: true });
+  for (const c of node.children) ro.observe(c);
+  update();
+  return {
+    destroy() {
+      cancelAnimationFrame(raf);
+      node.removeEventListener('scroll', queue);
+      ro.disconnect();
+      mo.disconnect();
+    },
+  };
+}
+
 /** Parallax drift for illustrations on scroll + pointer: use:parallax */
 export function parallax(node: HTMLElement, depth = 0.08) {
   let raf = 0;

@@ -12,7 +12,7 @@
   import { navigate } from '$lib/router.svelte';
   import { missingCompanion, companionApp } from '$shared/companions';
   import ToolLogo from '$c/ToolLogo.svelte';
-  import { errorToast, toast, petals } from '$lib/ui.svelte';
+  import { errorToast, toast, petals, scrollArea } from '$lib/ui.svelte';
 
   let { go }: { go: (d: number) => void } = $props();
   const d = draft.d;
@@ -159,7 +159,7 @@
       <p class="muted">{needsRebuild(app) ? 'No patches — only basic modifications.' : 'Passed on exactly as released, with its original signature.'}</p>
     {:else}
       {#if src && !src.builtin}<p class="muted small">From {src.name}</p>{/if}
-      <div class="chips">
+      <div class="chips scroll-area" use:scrollArea style="--scroll-max:200px">
         {#each app.patches as p}<span class="tag olive">{p.name}{#if p.options && Object.keys(p.options).length}<Icon name="tune" size={12} />{/if}</span>{/each}
         {#each app.customPatches.filter((c) => c.enabled) as c}<span class="tag terra">{c.name}</span>{/each}
         {#if !app.patches.length && !app.customPatches.length}<span class="muted">No {app.tool === 'lspatch' ? 'modules' : 'patches'} selected</span>{/if}
