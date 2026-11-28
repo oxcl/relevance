@@ -17,6 +17,8 @@ export interface Draft {
   newShots: { id: string; blob: Blob; url: string }[];
   visited: number;
   recipe: Recipe | null;
+  /** id of the app this draft duplicates */
+  cloneOf?: string | null;
 }
 
 export function blankApp(): AppConfig {
@@ -54,6 +56,7 @@ function fresh(): Draft {
     newShots: [],
     visited: 0,
     recipe: null,
+    cloneOf: null,
   };
 }
 

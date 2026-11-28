@@ -177,6 +177,8 @@
             {#each [['source', 'Source', 'travel_explore'], ['tool', 'Switch tool', 'swap_horiz'], ['patches', 'Patches', 'extension'], ['customize', 'Name & icon', 'palette'], ['listing', 'Store listing', 'storefront']] as [s, l, ic]}
               {#if s !== 'patches' || app.tool !== 'none'}<a href="/apps/{id}/edit/{s}"><Icon name={ic} size={18} />{l}</a>{/if}
             {/each}
+            <hr />
+            <a href="/add?from={id}"><Icon name="content_copy" size={18} />Duplicate…</a>
           </div>
         {/if}
       </div>
@@ -387,6 +389,11 @@
   }
   .menu a:hover {
     background: var(--container);
+  }
+  .menu hr {
+    border: 0;
+    border-top: 1px solid var(--outline);
+    margin: 4px 6px;
   }
   .att {
     display: flex;

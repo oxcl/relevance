@@ -172,8 +172,10 @@ export class GitHubProvider implements HostingProvider {
     const info = await this.req(`/repos/${repo}`, { etag: false });
     const branch = info.default_branch || 'main';
     const tree: any[] = [];
+    const copies: { path: string; from: string }[] = [];
     for (const f of files) {
-      if (f.content === null) tree.push({ path: f.path, mode: '100644', type: 'blob', sha: null });
+      if (f.copyFrom) copies.push({ path: f.path, from: f.copyFrom });
+      else if (f.content === null) tree.push({ path: f.path, mode: '100644', type: 'blob', sha: null });
       else if (typeof f.content === 'string') tree.push({ path: f.path, mode: '100644', type: 'blob', content: f.content });
       else {
         const blob = await this.req(`/repos/${repo}/git/blobs`, {
@@ -190,7 +192,9 @@ export class GitHubProvider implements HostingProvider {
       // drop deletions of files that don't exist (GitHub rejects them)
       const t = await this.req(`/repos/${repo}/git/trees/${pc.tree.sha}?recursive=1`);
       const existing = new Set((t.tree || []).map((x: any) => x.path));
-      const entries = tree.filter((e) => e.sha !== null || existing.has(e.path));
+      const shaOf = new Map<string, string>((t.tree || []).filter((x: any) => x.type === 'blob').map((x: any) => [x.path, x.sha]));
+      const copied = copies.flatMap((c) => (shaOf.has(c.from) ? [{ path: c.path, mode: '100644', type: 'blob', sha: shaOf.get(c.from) }] : []));
+      const entries = [...copied, ...tree.filter((e) => e.sha !== null || existing.has(e.path))];
       if (!entries.length) return parent;
       const nt = await this.req(`/repos/${repo}/git/trees`, {
         method: 'POST',

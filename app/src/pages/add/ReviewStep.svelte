@@ -56,6 +56,20 @@
       }
 
       phase = 'Preparing files…';
+      // a duplicate gets its own copies of the original's files (copied inside the repository)
+      const od = d.cloneOf ? `.relevance/apps/${d.cloneOf}/` : null;
+      const own = (p?: string) => {
+        if (!od || !p?.startsWith(od)) return p;
+        const np = dir + '/' + p.slice(od.length);
+        files.push({ path: np, content: null, copyFrom: p });
+        return np;
+      };
+      if (od) {
+        app.iconUrl = own(app.iconUrl);
+        const orig = data.config?.apps.find((a) => a.id === d.cloneOf);
+        const basePath = orig?.customize.icon?.basePath;
+        if (d.iconMode === 'upload' && !(d.iconUploadBlob instanceof Blob) && basePath) own(basePath);
+      }
       if (d.sourceIconBlob instanceof Blob) {
         files.push({ path: `${dir}/source-icon.png`, content: new Uint8Array(await d.sourceIconBlob.arrayBuffer()) });
         app.iconUrl = `${dir}/source-icon.png`;
@@ -84,7 +98,7 @@
           const path = `${dir}/screenshots/${Date.now().toString(36)}-${n++}.${ext}`;
           files.push({ path, content: new Uint8Array(await ns.blob.arrayBuffer()) });
           shots.push(path);
-        } else shots.push(s);
+        } else shots.push(own(s)!);
       }
       app.listing.screenshots = shots;
 
@@ -116,7 +130,7 @@
         if (companionId) await startBuild(companionId, true).catch(() => {});
         const run = await startBuild(id, true);
         petals(24);
-        toast(editing ? 'Saved — rebuilding now' : `${displayName(snapshot)} added — building now`, 'success');
+        toast(editing ? 'Saved — rebuilding now' : `${displayName(snapshot)} ${d.cloneOf ? 'duplicated' : 'added'} — building now`, 'success');
         navigate(run ? `/builds/${run.id}` : `/apps/${id}`, { replace: true });
         setTimeout(resetDraft, 800);
       } else {

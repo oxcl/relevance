@@ -24,6 +24,8 @@ export interface FileChange {
   path: string;
   /** string = utf8 text, Uint8Array = binary, null = delete */
   content: string | Uint8Array | null;
+  /** copy an existing file of the repository (by reference, nothing is downloaded); content is ignored */
+  copyFrom?: string;
 }
 
 export interface WorkflowRun {
