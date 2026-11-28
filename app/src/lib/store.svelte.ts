@@ -1,3 +1,4 @@
+import { companionIcon } from '$shared/companions';
 import type { AppConfig, AppState, PatchIndex, PatchSource, RelevanceConfig } from '$shared/types';
 import { ENGINE_VERSION } from '$shared/types';
 import { BUILD_WORKFLOW, PUBLISH_WORKFLOW, updateWorkflow } from '$shared/templates';
@@ -419,7 +420,8 @@ export async function appIconUrl(app: AppConfig): Promise<string | null> {
     if (!session.repoInfo?.private) return gh().rawUrl(session.repo, app.iconUrl);
     return gh().readBlobUrl(session.repo, app.iconUrl);
   }
-  return app.iconUrl ? proxied(app.iconUrl) : null;
+  const u = app.iconUrl || companionIcon(app);
+  return u ? proxied(u) : null;
 }
 
 export function proxied(url: string) {

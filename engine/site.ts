@@ -1,4 +1,5 @@
 // Generates the user's F-Droid repository and static store site into _site/
+import { companionIcon } from '../shared/companions';
 import { copyFileSync, existsSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import qrcode from 'qrcode-generator';
@@ -103,7 +104,7 @@ export async function buildSite() {
     writeFileSync(`${fd}/metadata/${pkg}.yml`, yml);
     const loc = `${fd}/metadata/${pkg}/en-US`;
     mkdirSync(`${loc}/phoneScreenshots`, { recursive: true });
-    await assetTo(app.customize?.icon?.path || app.iconUrl, `${loc}/icon.png`);
+    await assetTo(app.customize?.icon?.path || app.iconUrl || companionIcon(app), `${loc}/icon.png`);
     let i = 1;
     for (const s of app.listing?.screenshots || []) await assetTo(s, `${loc}/phoneScreenshots/${i++}.png`);
   }
@@ -156,7 +157,7 @@ export async function buildSite() {
   for (const { app, st } of apps) {
     const dir = `${OUT}/apps/${app.id}`;
     mkdirSync(`${dir}/shots`, { recursive: true });
-    const icon = (await assetTo(app.customize?.icon?.path || app.iconUrl, `${dir}/icon.png`)) ? 'icon.png' : '../../assets/icon.png';
+    const icon = (await assetTo(app.customize?.icon?.path || app.iconUrl || companionIcon(app), `${dir}/icon.png`)) ? 'icon.png' : '../../assets/icon.png';
     const shots: string[] = [];
     let i = 1;
     for (const s of app.listing?.screenshots || []) {

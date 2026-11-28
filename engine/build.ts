@@ -2,7 +2,8 @@
 // visible both in GitHub and in Relevance (via the live log relay).
 import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { join } from 'node:path';
+import { deflateSync } from 'node:zlib';
+import { join, resolve } from 'node:path';
 import type { AppConfig, AppState, PatchIndex, PatchSource, RelevanceConfig, ReleaseEntry } from '../shared/types';
 import { configHash, findPatch, needsRebuild, pickTarget, sortVersionsDesc } from '../shared/logic';
 import { getDownload, resolveSource } from '../shared/sources';
@@ -373,6 +374,126 @@ function optionArg(v: unknown): string {
   return String(v);
 }
 
+// ------------------------------------------------------------------ branding through the patch bundle
+// Apps like YouTube can't survive an apktool round trip once patched, but their bundles ship
+// "Custom branding" (name + icon) and ReVanced ships "Change package name". When available,
+// customizations go through those patches and the apktool step only does what is left.
+
+export type Branding = { name?: boolean; icon?: boolean; packageName?: boolean; via?: string[] };
+
+/** Solid-colour RGB PNG (adaptive icon background). */
+export function solidPng(size: number, hex: string): Buffer {
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex.trim()) || [, 'ffffff'];
+  const [r, g, b] = [0, 2, 4].map((i) => parseInt(m[1]!.slice(i, i + 2), 16));
+  const row = Buffer.alloc(1 + size * 3);
+  for (let x = 0; x < size; x++) row.set([r, g, b], 1 + x * 3);
+  const raw = Buffer.concat(Array.from({ length: size }, () => row));
+  const crcTable = Array.from({ length: 256 }, (_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc = (buf: Buffer) => {
+    let c = 0xffffffff;
+    for (const byte of buf) c = crcTable[(c ^ byte) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  };
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const td = Buffer.concat([Buffer.from(type), data]);
+    const c = Buffer.alloc(4);
+    c.writeUInt32BE(crc(td));
+    return Buffer.concat([len, td, c]);
+  };
+  const ihdr = Buffer.alloc(13);
+  ihdr.writeUInt32BE(size, 0);
+  ihdr.writeUInt32BE(size, 4);
+  ihdr.set([8, 2, 0, 0, 0], 8);
+  return Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk('IHDR', ihdr), chunk('IDAT', deflateSync(raw)), chunk('IEND', Buffer.alloc(0))]);
+}
+
+const DENSITIES: [string, number][] = [['mdpi', 108], ['hdpi', 162], ['xhdpi', 216], ['xxhdpi', 324], ['xxxhdpi', 432]];
+
+/** High-quality downscale with the JDK (no image tools on the runner otherwise). */
+async function resizePng(src: string, outs: string[]) {
+  const file = `${WORK}/tools/Resize.java`;
+  mkdirSync(`${WORK}/tools`, { recursive: true });
+  writeFileSync(
+    file,
+    `import java.awt.*; import java.awt.image.*; import javax.imageio.ImageIO; import java.io.File;
+public class Resize { public static void main(String[] a) throws Exception {
+  BufferedImage in = ImageIO.read(new File(a[0]));
+  for (int i = 1; i + 1 < a.length; i += 2) {
+    int s = Integer.parseInt(a[i + 1]);
+    Image sc = in.getScaledInstance(s, s, Image.SCALE_AREA_AVERAGING);
+    BufferedImage out = new BufferedImage(s, s, BufferedImage.TYPE_INT_ARGB);
+    Graphics2D g = out.createGraphics(); g.drawImage(sc, 0, 0, null); g.dispose();
+    ImageIO.write(out, "png", new File(a[i]));
+  } } }`,
+  );
+  await run('java', ['-Djava.awt.headless=true', file, src, ...outs], { quiet: true });
+}
+
+export async function brandWithPatches(app: AppConfig, index: PatchIndex | null, selected: { name: string; options: Record<string, unknown> }[]): Promise<Branding> {
+  const c = app.customize || {};
+  const done: Branding = { via: [] };
+  if (!index || (app.tool !== 'morphe' && app.tool !== 'revanced')) return done;
+  const prefix = app.tool;
+  const select = (name: string) => {
+    let s = selected.find((x) => x.name === name);
+    if (!s) selected.push((s = { name, options: {} }));
+    if (!done.via!.includes(name)) done.via!.push(name);
+    return s;
+  };
+  const brand = findPatch(index, 'Custom branding', app.packageName);
+  const opts = brand?.options || [];
+  const nameKey = opts.find((o) => /name/i.test(o.key))?.key;
+  const iconKey = opts.find((o) => /custom ?icon/i.test(o.key))?.key;
+  const fg = c.icon?.path?.replace(/\.png$/, '-fg.png');
+  const canIcon = Boolean(c.icon && iconKey && fg && existsSync(fg));
+  // only pull the patch in when the user didn't pick it if it can carry the icon (otherwise it would swap in the patcher's icon)
+  const chosen = selected.some((x) => x.name === 'Custom branding');
+  const appIconKey = opts.find((o) => /^appIcon$/i.test(o.key))?.key;
+  if (brand && (chosen || canIcon || (c.name && nameKey && appIconKey))) {
+    // pulled in only for the name: keep the app's own icon
+    if (!chosen && !canIcon && appIconKey) select('Custom branding').options[appIconKey] = 'original';
+    if (c.name && nameKey) {
+      select('Custom branding').options[nameKey] = c.name;
+      done.name = true;
+    }
+    if (canIcon) {
+      const dir = `${WORK}/branding`;
+      rmSync(dir, { recursive: true, force: true });
+      const bg = readJson<{ background?: string }>(c.icon!.path.replace(/\.png$/, '.json'), {}).background || '#FFFFFF';
+      const jobs: string[] = [];
+      for (const [d, px] of DENSITIES) {
+        mkdirSync(`${dir}/mipmap-${d}`, { recursive: true });
+        jobs.push(`${dir}/mipmap-${d}/${prefix}_adaptive_foreground_custom.png`, String(px));
+        writeFileSync(`${dir}/mipmap-${d}/${prefix}_adaptive_background_custom.png`, solidPng(px, bg));
+      }
+      await resizePng(fg!, jobs);
+      const s = select('Custom branding');
+      s.options[iconKey!] = resolve(dir);
+      if (appIconKey) s.options[appIconKey] = 'custom';
+      done.icon = true;
+    }
+  }
+  const pkgPatch = c.packageName && c.packageName !== app.packageName ? findPatch(index, 'Change package name', app.packageName) : null;
+  const pkgKey = pkgPatch?.options?.find((o) => /package/i.test(o.key))?.key;
+  if (pkgPatch && pkgKey) {
+    const s = select('Change package name');
+    s.options[pkgKey] = c.packageName;
+    for (const o of pkgPatch.options || []) if (/providers|permissions/i.test(o.key) && s.options[o.key] === undefined) s.options[o.key] = true;
+    done.packageName = true;
+  }
+  if (done.name || done.icon || done.packageName) {
+    const what = [done.name && 'name', done.icon && 'icon', done.packageName && 'package name'].filter(Boolean).join(', ');
+    info(`Applying your ${what} with ${done.via!.join(' + ')} (no apktool round trip needed)`);
+  }
+  return done;
+}
+
 export async function patch(appId: string) {
   const cfg = loadConfig();
   const app = getApp(cfg, appId);
@@ -414,13 +535,16 @@ export async function patch(appId: string) {
     const args = ['-jar', cli, 'patch'];
     for (const b of bundles) args.push('-p', b, ...(app.tool === 'revanced' ? ['-b'] : []));
     args.push('--exclusive');
-    for (const sel of app.patches) {
+    const selected = app.patches.map((x) => ({ name: x.name, options: { ...(x.options || {}) } as Record<string, unknown> }));
+    const handled = await brandWithPatches(app, await loadIndex(ps), selected);
+    for (const sel of selected) {
       args.push('-e', sel.name);
-      for (const [k, v] of Object.entries(sel.options || {})) {
-        if (v === undefined || v === '') continue;
+      for (const [k, v] of Object.entries(sel.options)) {
+        if (v === undefined || v === '' || v === null) continue;
         args.push(`-O${k}=${optionArg(v)}`);
       }
     }
+    writeJson(`${WORK}/branding.json`, handled);
     for (const c of custom) for (const n of c.patchNames?.length ? c.patchNames : [c.name]) args.push('-e', n);
     if (app.pin) args.push('-f');
     args.push('-o', out, '-t', `${WORK}/tmp`, input);
@@ -500,8 +624,14 @@ function dropConfigs(resDir: string, dirs: string[]) {
 export async function customize(appId: string) {
   const cfg = loadConfig();
   const app = getApp(cfg, appId);
-  const c = app.customize || {};
-  if (!c.name && !c.packageName && !c.icon) return log('No basic modifications — skipping');
+  const handled = readJson<Branding>(`${WORK}/branding.json`, {});
+  const all = app.customize || {};
+  const c = { name: handled.name ? undefined : all.name, packageName: handled.packageName ? undefined : all.packageName, icon: handled.icon ? undefined : all.icon };
+  if (!c.name && !c.packageName && !c.icon) {
+    if (handled.via?.length) return ok(`Name, icon and package were already applied by ${handled.via.join(' + ')} — nothing left to decompile`);
+    return log('No basic modifications — skipping');
+  }
+  if (handled.via?.length) info(`${handled.via.join(' + ')} took care of part of it; decompiling for the rest`);
   const apktool = await fetchCli('apktool');
   const dec = `${WORK}/decoded`;
   rmSync(dec, { recursive: true, force: true });

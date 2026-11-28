@@ -9,6 +9,7 @@ export interface Companion {
   source: AppConfig['source'];
   summary: string;
   why: string;
+  iconUrl: string;
 }
 
 const MICROG_PKG = 'app.revanced.android.gms';
@@ -23,6 +24,7 @@ export function companionFor(app: Pick<AppConfig, 'tool' | 'patches' | 'packageN
       packageName: MICROG_PKG,
       source: { type: 'github', url: 'https://github.com/MorpheApp/MicroG-RE', assetPattern: '^microg-[\\w.]+\\.apk$' },
       summary: "Morphe's MicroG build, so patched Google apps can sign in.",
+      iconUrl: 'https://raw.githubusercontent.com/MorpheApp/MicroG-RE/main/play-services-core/src/main/res/mipmap-xxxhdpi/ic_app.png',
       why,
     };
   if (app.tool === 'revanced')
@@ -32,6 +34,7 @@ export function companionFor(app: Pick<AppConfig, 'tool' | 'patches' | 'packageN
       packageName: MICROG_PKG,
       source: { type: 'github', url: 'https://github.com/ReVanced/GmsCore', assetPattern: '^app\\.revanced\\.android\\.gms-[\\w.]+-signed\\.apk$' },
       summary: "ReVanced's MicroG build, so patched Google apps can sign in.",
+      iconUrl: 'https://raw.githubusercontent.com/ReVanced/GmsCore/main/play-services-core/src/main/res/mipmap-xxxhdpi/ic_app.png',
       why,
     };
   return null;
@@ -52,7 +55,7 @@ export function companionApp(c: Companion, takenIds: string[]): AppConfig {
     id,
     name: c.name,
     packageName: c.packageName,
-    iconUrl: undefined,
+    iconUrl: c.iconUrl,
     source: c.source,
     tool: 'none',
     patches: [],
@@ -64,4 +67,12 @@ export function companionApp(c: Companion, takenIds: string[]): AppConfig {
     createdAt: now,
     updatedAt: now,
   };
+}
+
+/** Icon for companion apps added before they carried one (their APK icons are vector drawables F-Droid can't show). */
+export function companionIcon(app: Pick<AppConfig, 'source' | 'packageName'>): string | undefined {
+  if (app.packageName !== MICROG_PKG) return undefined;
+  if (/MorpheApp\/MicroG-RE/i.test(app.source.url)) return 'https://raw.githubusercontent.com/MorpheApp/MicroG-RE/main/play-services-core/src/main/res/mipmap-xxxhdpi/ic_app.png';
+  if (/ReVanced\/GmsCore/i.test(app.source.url)) return 'https://raw.githubusercontent.com/ReVanced/GmsCore/main/play-services-core/src/main/res/mipmap-xxxhdpi/ic_app.png';
+  return undefined;
 }
