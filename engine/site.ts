@@ -394,7 +394,7 @@ h2 .count{display:inline-block;vertical-align:middle;margin-left:6px;padding:1px
 .filter{display:flex;align-items:center;gap:8px;margin:-2px 0 10px;padding:8px 12px;border-radius:12px;background:var(--container);color:var(--muted);transition:box-shadow .2s}.filter:focus-within{box-shadow:0 0 0 2px var(--olive)}
 .filter input{flex:1;min-width:0;border:0;background:none;font:inherit;color:var(--text);outline:none}
 .checks li.hide{display:none}
-.two>.fdroid{margin:0}.fdroid>div{flex:1}
+html,body{overflow-x:clip}.two>.fdroid{margin:0}.fdroid>div{flex:1}
 @media(max-width:760px){.fdroid{flex-direction:column;align-items:stretch}.fdroid .qr{align-self:center}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}}
 `;
