@@ -1,6 +1,7 @@
 import { companionIcon } from '$shared/companions';
 import type { AppConfig, AppState, PatchIndex, PatchSource, RelevanceConfig } from '$shared/types';
 import { ENGINE_VERSION } from '$shared/types';
+import { compareVersions } from '$shared/logic';
 import { BUILD_WORKFLOW, PUBLISH_WORKFLOW, updateWorkflow } from '$shared/templates';
 import { fromPatchesList } from '$shared/patchlist';
 import { GitHubProvider } from './github';
@@ -79,6 +80,17 @@ export async function loadServerConfig() {
     const r = await fetch('/api/config');
     if (r.ok) session.server = await r.json();
   } catch {}
+}
+
+/** Has a newer Relevance been deployed since this tab loaded? */
+export async function newerDeployed(): Promise<boolean> {
+  try {
+    const r = await fetch('/api/config', { cache: 'no-store' });
+    const v = r.ok ? (await r.json()).engineVersion : null;
+    return Boolean(v && compareVersions(v, ENGINE_VERSION) > 0);
+  } catch {
+    return false;
+  }
 }
 
 export function signInUrl(ret = '/dashboard') {
@@ -210,10 +222,11 @@ export async function saveConfig(mutate: (cfg: RelevanceConfig) => void, message
   const cfg: RelevanceConfig = latest ? JSON.parse(latest.text) : structuredClone($state.snapshot(data.config));
   mutate(cfg);
   const files: FileChange[] = [{ path: 'relevance.json', content: JSON.stringify(cfg, null, 2) + '\n' }, ...extra];
-  if (data.engineVersion !== ENGINE_VERSION) files.push(...(await engineFiles(repo)));
+  const upgrade = engineOutdated(data.engineVersion);
+  if (upgrade) files.push(...(await engineFiles(repo)));
   await gh().commit(repo, files, message);
   data.config = cfg;
-  if (data.engineVersion !== ENGINE_VERSION) data.engineVersion = ENGINE_VERSION;
+  if (upgrade) data.engineVersion = ENGINE_VERSION;
   return cfg;
 }
 
@@ -228,8 +241,17 @@ export async function engineFiles(repo: string): Promise<FileChange[]> {
   ];
 }
 
+/** True when the repository runs an older engine than this page ships (never downgrade from a stale tab). */
+export function engineOutdated(v: string | null | undefined) {
+  return !v || compareVersions(v, ENGINE_VERSION) < 0;
+}
+
 export async function ensureEngine() {
-  if (!session.repo || !data.loaded || data.engineVersion === ENGINE_VERSION) return false;
+  if (!session.repo || !data.loaded) return false;
+  // re-read: another tab or device may have updated it meanwhile
+  const ev = await gh().readText(session.repo, '.relevance/engine.version').catch(() => null);
+  if (ev) data.engineVersion = ev.text.trim();
+  if (!engineOutdated(data.engineVersion)) return false;
   await gh().commit(session.repo, await engineFiles(session.repo), `relevance: update build engine to ${ENGINE_VERSION}`);
   data.engineVersion = ENGINE_VERSION;
   return true;
@@ -238,6 +260,7 @@ export async function ensureEngine() {
 // ---------------------------------------------------------------- builds
 
 export async function startBuild(appId: string, force = true) {
+  await ensureEngine();
   await gh().dispatch(session.repo!, 'relevance-build.yml', { app: appId, force: String(force), trigger: 'manual' });
   // GitHub needs a moment before the run shows up
   for (let i = 0; i < 12; i++) {

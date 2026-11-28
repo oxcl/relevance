@@ -3,6 +3,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import { resolveSource, apkpureCodes } from '../shared/sources';
 import type { AppSource } from '../shared/types';
+import { ENGINE_VERSION } from '../shared/types';
 
 export interface Env {
   ASSETS: Fetcher;
@@ -101,7 +102,7 @@ export default {
       if (req.method === 'OPTIONS') return new Response(null, { status: 204 });
       // auth --------------------------------------------------------------
       if (p === '/api/config') {
-        return json({ oauth: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET), email: Boolean(env.EMAIL && env.SESSION_SECRET) });
+        return json({ oauth: Boolean(env.GITHUB_CLIENT_ID && env.GITHUB_CLIENT_SECRET), email: Boolean(env.EMAIL && env.SESSION_SECRET), engineVersion: ENGINE_VERSION }, 200, { 'cache-control': 'no-store' });
       }
       if (p === '/api/auth/login') {
         if (!env.GITHUB_CLIENT_ID) return err('GitHub sign-in is not configured on this server', 503);

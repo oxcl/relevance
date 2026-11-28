@@ -266,4 +266,4 @@ export interface StepDef {
   subtitle: string;
 }
 
-export const ENGINE_VERSION = '1.3.3';
+export const ENGINE_VERSION = '1.3.4';

@@ -80,3 +80,16 @@ test('apkpure version codes', async () => {
   expect(codes['2026.40.0']).toBe(2640090); // version list
   expect(codes['3.20.82']).toBeUndefined(); // APKPure's own app banner is ignored
 });
+
+test('binary manifest edit renames package, label, authorities and permissions', async () => {
+  const { editManifest, readManifest } = await import('../engine/axml');
+  const src = readFileSync(new URL('./fixtures/binaryeye-manifest.bin', import.meta.url));
+  expect(readManifest(src).packageName).toBe('de.markusfisch.android.binaryeye');
+  const r = editManifest(src, { packageName: 'de.markusfisch.android.binaryeye.mod', label: 'Eye Mod' });
+  const m = readManifest(r.bytes);
+  expect(m.packageName).toBe('de.markusfisch.android.binaryeye.mod');
+  expect(m.label).toBe('Eye Mod');
+  // re-parsing the output must work and a second edit must be stable
+  const again = editManifest(r.bytes, { label: 'Eye Mod 2' });
+  expect(readManifest(again.bytes)).toEqual({ packageName: 'de.markusfisch.android.binaryeye.mod', label: 'Eye Mod 2' });
+});

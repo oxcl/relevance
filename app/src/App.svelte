@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
   import { fly, fade, scale } from 'svelte/transition';
   import { router, navigate, initRouter, definePatterns } from '$lib/router.svelte';
-  import { session, data, initSession, refresh, ensureEngine, attentionItems, runningBuilds, signOut, loadServerConfig, displayName } from '$lib/store.svelte';
+  import { session, data, initSession, refresh, ensureEngine, newerDeployed, attentionItems, runningBuilds, signOut, loadServerConfig, displayName } from '$lib/store.svelte';
   import { setTheme, theme, isDark, toast, ripple, timeAgo } from '$lib/ui.svelte';
   import Icon from '$c/Icon.svelte';
   import Toasts from '$c/Toasts.svelte';
@@ -109,7 +109,18 @@
         }
       }
     });
-    const vis = () => document.visibilityState === 'visible' && session.status === 'ready' && refresh();
+    let updateOffered = false;
+    const checkDeploy = async () => {
+      if (updateOffered || !(await newerDeployed())) return;
+      updateOffered = true;
+      toast('A new version of Relevance is available', 'info', { label: 'Reload', run: () => location.reload() }, 2_000_000_000);
+    };
+    const deployTimer = setInterval(checkDeploy, 10 * 60_000);
+    const vis = () => {
+      if (document.visibilityState !== 'visible') return;
+      checkDeploy();
+      if (session.status === 'ready') refresh();
+    };
     document.addEventListener('visibilitychange', vis);
     const key = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -120,6 +131,7 @@
     addEventListener('keydown', key);
     return () => {
       document.removeEventListener('visibilitychange', vis);
+      clearInterval(deployTimer);
       removeEventListener('keydown', key);
     };
   });

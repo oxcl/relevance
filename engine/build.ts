@@ -35,6 +35,7 @@ import {
   writeJson,
 } from './util';
 import { notify } from './notify';
+import { editManifest } from './axml';
 import { apkeepDownload, apkeepVersions } from './apkeep';
 import { apkpurePage } from '../shared/sources';
 
@@ -631,7 +632,23 @@ export async function customize(appId: string) {
     if (handled.via?.length) return ok(`Name, icon and package were already applied by ${handled.via.join(' + ')} — nothing left to decompile`);
     return log('No basic modifications — skipping');
   }
-  if (handled.via?.length) info(`${handled.via.join(' + ')} took care of part of it; decompiling for the rest`);
+  if (handled.via?.length) info(`${handled.via.join(' + ')} took care of part of it`);
+  if (!c.icon) {
+    // name and package only: edit the compiled manifest directly, nothing gets decompiled
+    info('Editing the compiled manifest (no decompile needed)');
+    const apk = resolve(`${WORK}/current.apk`);
+    const tmp = `${WORK}/manifest-edit`;
+    rmSync(tmp, { recursive: true, force: true });
+    mkdirSync(tmp, { recursive: true });
+    await run('python3', ['-I', '-c', 'import sys,zipfile;open(sys.argv[2],"wb").write(zipfile.ZipFile(sys.argv[1]).read("AndroidManifest.xml"))', apk, `${tmp}/AndroidManifest.xml`], { quiet: true });
+    const r = editManifest(readFileSync(`${tmp}/AndroidManifest.xml`), { packageName: c.packageName, label: c.name });
+    writeFileSync(`${tmp}/AndroidManifest.xml`, r.bytes);
+    await run('zip', ['-q', apk, 'AndroidManifest.xml'], { cwd: tmp, quiet: true });
+    for (const ch of r.changes) ok(ch.charAt(0).toUpperCase() + ch.slice(1));
+    const after = await apkInfo(apk);
+    if (c.packageName && after.packageName !== c.packageName) throw new Error(`Manifest edit failed: package is ${after.packageName}`);
+    return ok('Customized APK ready');
+  }
   const apktool = await fetchCli('apktool');
   const dec = `${WORK}/decoded`;
   rmSync(dec, { recursive: true, force: true });
