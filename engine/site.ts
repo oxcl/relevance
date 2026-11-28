@@ -313,15 +313,19 @@ function appPage(
 ${warning}
 ${o.shots.length ? `<section class="shots">${o.shots.map((s) => `<button class="shot" data-zoom="${s}"><img src="${s}" alt="Screenshot" loading="lazy"></button>`).join('')}</section>` : ''}
 <section class="two">
-  <article class="card reveal"><h2>Description</h2><div class="desc">${sanitizeHtml(app.listing?.description || `<p>${esc(app.listing?.summary || '')}</p>`)}</div></article>
-  <article class="card reveal"><h2>Patches applied</h2>${
+  <article class="card reveal"><h2>Description</h2><div class="desc scroll">${
+    app.listing?.description || app.listing?.summary
+      ? sanitizeHtml(app.listing?.description || `<p>${esc(app.listing?.summary || '')}</p>`)
+      : `<p class="muted">No description yet.</p>`
+  }</div></article>
+  <article class="card reveal"><h2>Patches applied${cur.patches.length ? ` <span class="count">${cur.patches.length}</span>` : ''}</h2>${
     cur.patches.length
-      ? `<ul class="checks">${cur.patches.map((p) => `<li>${ICON.check}<span>${esc(p)}</span></li>`).join('')}</ul>`
+      ? `${cur.patches.length > 10 ? `<label class="filter">${ICON.search}<input type="search" placeholder="Filter ${cur.patches.length} patches" data-filter="patches" aria-label="Filter patches"></label>` : ''}<ul class="checks scroll" id="patches">${cur.patches.map((p) => `<li>${ICON.check}<span>${esc(p)}</span></li>`).join('')}</ul><p class="muted none" hidden>No patch matches.</p>`
       : `<p class="muted">${app.customize?.name || app.customize?.icon || app.customize?.packageName ? 'Basic modifications only (name, icon or package).' : 'Unmodified — passed on exactly as released.'}</p>`
   }</article>
 </section>
 <section class="two">
-  <article class="card reveal"><h2>Versions</h2><table class="versions"><thead><tr><th>Version</th><th>Date</th><th>Size</th><th></th></tr></thead><tbody>${versions}</tbody></table></article>
+  <article class="card reveal"><h2>Versions</h2><div class="scroll"><table class="versions"><thead><tr><th>Version</th><th>Date</th><th>Size</th><th></th></tr></thead><tbody>${versions}</tbody></table></div></article>
   ${fdroidCard(o.fdroidAdd, 2)}
 </section>
 </main>
@@ -330,6 +334,7 @@ ${o.shots.length ? `<section class="shots">${o.shots.map((s) => `<button class="
 }
 
 const ICON = {
+  search: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="currentColor" d="m19.6 21-6.3-6.3q-.75.6-1.72.95T9.5 16q-2.73 0-4.61-1.89T3 9.5t1.89-4.61T9.5 3t4.61 1.89T16 9.5q0 1.1-.35 2.08T14.7 13.3l6.3 6.3zM9.5 14q1.88 0 3.19-1.31T14 9.5t-1.31-3.19T9.5 5 6.31 6.31 5 9.5t1.31 3.19T9.5 14"/></svg>',
   download: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M12 15.6 7.4 11l1.4-1.4 2.2 2.2V4h2v7.8l2.2-2.2 1.4 1.4zM6 20q-.8 0-1.4-.6T4 18v-3h2v3h12v-3h2v3q0 .8-.6 1.4T18 20z"/></svg>',
   share: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M17 22q-1.2 0-2.1-.9T14 19l.1-.7-7-4.1q-.4.4-.9.6T5 15q-1.2 0-2.1-.9T2 12t.9-2.1T5 9q.6 0 1.2.2t.9.6l7-4.1L14 5q0-1.2.9-2.1T17 2t2.1.9T20 5t-.9 2.1T17 8q-.6 0-1.2-.2t-.9-.6l-7 4.1.1.7-.1.7 7 4.1q.4-.4.9-.6T17 16q1.2 0 2.1.9T20 19t-.9 2.1T17 22"/></svg>',
   flask: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M5 21q-1.3 0-1.8-1.1t.2-2.1L9 10V5H8V3h8v2h-1v5l5.6 7.8q.7 1 .2 2.1T19 21zm2-3h10l-3.4-5H10.4z"/></svg>',
@@ -379,6 +384,18 @@ h2{margin:0 0 12px;font-size:1.3rem;font-weight:800}
 dialog#zoom{border:0;padding:0;background:transparent;max-width:92vw;max-height:92vh}dialog#zoom::backdrop{background:rgba(30,20,10,.6);backdrop-filter:blur(4px)}dialog#zoom img{max-height:90vh;max-width:90vw;border-radius:18px}
 .reveal{opacity:0;transform:translateY(18px);transition:opacity .7s ease,transform .7s cubic-bezier(.2,.8,.2,1)}.reveal.in{opacity:1;transform:none}
 .toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,40px);opacity:0;background:var(--text);color:var(--bg);padding:10px 18px;border-radius:12px;transition:.35s cubic-bezier(.2,.9,.3,1.2)}.toast.show{transform:translate(-50%,0);opacity:1}
+/* grid/flex children may shrink below their longest word (the long F-Droid URL) */
+.two>*,.fdroid>div,.copy-row code,.desc{min-width:0}.desc{overflow-wrap:anywhere}.desc img{max-width:100%;height:auto}
+/* long lists scroll inside their card */
+@property --ft{syntax:'<length>';inherits:false;initial-value:0px}@property --fb{syntax:'<length>';inherits:false;initial-value:0px}
+.scroll{max-height:360px;overflow-y:auto;overscroll-behavior:contain;-webkit-mask-image:linear-gradient(#0000 0,#000 var(--ft),#000 calc(100% - var(--fb)),#0000 100%);mask-image:linear-gradient(#0000 0,#000 var(--ft),#000 calc(100% - var(--fb)),#0000 100%);transition:--ft .35s ease,--fb .35s ease;scrollbar-width:thin;scrollbar-color:var(--outline) transparent}
+.scroll.above{--ft:32px}.scroll.below{--fb:44px}.scroll.over{padding-right:6px}
+h2 .count{display:inline-block;vertical-align:middle;margin-left:6px;padding:1px 10px;border-radius:99px;background:var(--container);color:var(--muted);font-size:.8rem;font-weight:600;font-family:"Roboto Mono",ui-monospace,monospace}
+.filter{display:flex;align-items:center;gap:8px;margin:-2px 0 10px;padding:8px 12px;border-radius:12px;background:var(--container);color:var(--muted);transition:box-shadow .2s}.filter:focus-within{box-shadow:0 0 0 2px var(--olive)}
+.filter input{flex:1;min-width:0;border:0;background:none;font:inherit;color:var(--text);outline:none}
+.checks li.hide{display:none}
+.two>.fdroid{margin:0}.fdroid>div{flex:1}
+@media(max-width:760px){.fdroid{flex-direction:column;align-items:stretch}.fdroid .qr{align-self:center}}
 @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}.reveal{opacity:1;transform:none}}
 `;
 
@@ -390,4 +407,6 @@ document.addEventListener('click',async e=>{const c=e.target.closest('[data-copy
 const s=e.target.closest('[data-share]');if(s){const url=s.dataset.share;if(navigator.share){try{await navigator.share({title:s.dataset.title,url})}catch{}}else{await navigator.clipboard.writeText(url);toast('Link copied')}}
 const z=e.target.closest('[data-zoom]');if(z){const d=document.getElementById('zoom');d.querySelector('img').src=z.dataset.zoom;d.showModal()}
 if(e.target.id==='zoom')e.target.close()});
+document.querySelectorAll('.scroll').forEach(el=>{let r=0;const u=()=>{r=0;const m=el.scrollHeight-el.clientHeight;el.classList.toggle('over',m>2);el.classList.toggle('above',el.scrollTop>2);el.classList.toggle('below',el.scrollTop<m-2)};const q=()=>r||(r=requestAnimationFrame(u));el.addEventListener('scroll',q,{passive:true});new ResizeObserver(q).observe(el);u()});
+document.querySelectorAll('[data-filter]').forEach(inp=>{const list=document.getElementById(inp.dataset.filter);const none=list.nextElementSibling;inp.addEventListener('input',()=>{const q=inp.value.trim().toLowerCase();let n=0;for(const li of list.children){const hit=!q||li.textContent.toLowerCase().includes(q);li.classList.toggle('hide',!hit);n+=hit}none.hidden=n>0;list.scrollTop=0;list.dispatchEvent(new Event('scroll'))})});
 `;

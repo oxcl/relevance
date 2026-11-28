@@ -266,3 +266,11 @@ export function formatBytes(n: number | undefined): string {
   if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
   return `${(n / 1024 / 1024).toFixed(1)} MB`;
 }
+
+/**
+ * Patches that swap the launcher icon for the patcher's own branding (Morphe's "M", ReVanced's logo).
+ * They are never part of the recommended set: patched apps keep their own icon unless the user picks one.
+ */
+export const ICON_REPLACING_PATCHES = ['Custom branding'];
+export const replacesIcon = (name: string) => ICON_REPLACING_PATCHES.includes(name);
+export const isRecommended = (p: Pick<PatchDef, 'name' | 'default'>) => p.default !== false && !replacesIcon(p.name);

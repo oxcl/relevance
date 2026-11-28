@@ -456,6 +456,21 @@ export async function brandWithPatches(app: AppConfig, index: PatchIndex | null,
   // only pull the patch in when the user didn't pick it if it can carry the icon (otherwise it would swap in the patcher's icon)
   const chosen = selected.some((x) => x.name === 'Custom branding');
   const appIconKey = opts.find((o) => /^appIcon$/i.test(o.key))?.key;
+  // selected without a custom icon or name: all it would do is swap in the patcher's logo
+  if (brand && chosen && !canIcon && !appIconKey && !(c.name && nameKey)) {
+    selected.splice(selected.findIndex((x) => x.name === 'Custom branding'), 1);
+    info('Skipping Custom branding: without a custom name or icon it would only replace the app icon');
+    return done;
+  }
+  if (brand && chosen && !canIcon && !appIconKey) warn('Custom branding replaces the app icon with the patcher\'s own; set an icon under Name & icon to choose it yourself');
+  // selected without a custom icon: keep the app's own icon instead of the patcher's branding
+  if (brand && chosen && !canIcon && appIconKey) {
+    const s = selected.find((x) => x.name === 'Custom branding')!;
+    if (s.options[appIconKey] === undefined || s.options[appIconKey] === null || s.options[appIconKey] === '') {
+      s.options[appIconKey] = 'original';
+      info('Custom branding: keeping the original app icon');
+    }
+  }
   if (brand && (chosen || canIcon || (c.name && nameKey && appIconKey))) {
     // pulled in only for the name: keep the app's own icon
     if (!chosen && !canIcon && appIconKey) select('Custom branding').options[appIconKey] = 'original';

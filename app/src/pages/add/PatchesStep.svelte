@@ -9,7 +9,7 @@
   import StepNav from '$c/StepNav.svelte';
   import { draft } from '$lib/draft.svelte';
   import { loadIndex, sourceFor, data } from '$lib/store.svelte';
-  import { patchesForPackage, pickTarget, findPatch, sortVersionsDesc, versionsFor } from '$shared/logic';
+  import { patchesForPackage, pickTarget, findPatch, sortVersionsDesc, versionsFor, isRecommended, replacesIcon } from '$shared/logic';
   import type { PatchDef, PatchOptionDef, CustomPatch } from '$shared/types';
   import { ripple, scrollArea } from '$lib/ui.svelte';
   import { navigate, router } from '$lib/router.svelte';
@@ -34,7 +34,7 @@
     if (src) await loadIndex(src);
     loading = false;
     if (!app.patches.length && !d.editing && !(d as any).defaultsApplied && !isModules) {
-      app.patches = specific.filter((p) => p.default !== false).map((p) => ({ name: p.name }));
+      app.patches = specific.filter(isRecommended).map((p) => ({ name: p.name }));
     }
     (d as any).defaultsApplied = true;
   });
@@ -89,7 +89,7 @@
     customOpen = true;
   }
   const visibleSpecific = $derived(specific.filter(match));
-  const recommended = $derived(specific.filter((p) => p.default !== false));
+  const recommended = $derived(specific.filter(isRecommended));
   function applyRecommended() {
     app.patches = recommended.map((p) => ({ name: p.name, options: selected(p.name)?.options }));
   }
@@ -149,7 +149,7 @@
         <div class="prow" class:on animate:flip={{ duration: 250 }} style="animation-delay:{Math.min(i, 16) * 30}ms">
           <Switch checked={on} label={p.name} onchange={(v) => toggle(p, v)} />
           <button class="ptext" onclick={() => toggle(p, !on)}>
-            <span class="pn">{p.name}</span>
+            <span class="pn">{p.name}{#if replacesIcon(p.name)}<span class="tag warn-tag">{app.tool === 'morphe' ? 'keeps the original icon unless you pick one' : `replaces the app icon with ${app.tool === 'revanced' ? "ReVanced's" : 'its own'}`}</span>{/if}</span>
             {#if p.description}<span class="muted small">{p.description}</span>{/if}
           </button>
           {#if p.options?.length}
@@ -461,5 +461,11 @@
       top: 0;
       order: 2;
     }
+  }
+  .warn-tag {
+    margin-left: 8px;
+    font-weight: 500;
+    background: var(--amber-c);
+    color: var(--on-amber-c);
   }
 </style>
